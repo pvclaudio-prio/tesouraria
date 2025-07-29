@@ -140,6 +140,27 @@ def obter_id_pasta(nome_pasta, parent_id=None):
         return resultado[0]['id']
     return None
 
+def carregar_base_contratos():
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+
+    if not pasta_bases_id:
+        st.error("Pasta 'bases' não encontrada.")
+        return pd.DataFrame()
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'base_contratos.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("Arquivo 'base_contratos.xlsx' não encontrado.")
+        return pd.DataFrame()
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    df = pd.read_excel(caminho_temp)
+    return df
+
 def carregar_base_prio():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
