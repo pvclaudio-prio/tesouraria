@@ -323,8 +323,9 @@ def aba_validacao_clausulas():
             salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
             st.success("✅ Cláusulas salvas com sucesso!")
 
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+
 def extrair_clausulas_com_agente(texto):
-    openai.api_key = st.secrets["openai"]["api_key"]
     if len(texto) > 10000:
         texto = texto[:10000]  # Limita para evitar estouro de tokens
 
@@ -335,7 +336,7 @@ def extrair_clausulas_com_agente(texto):
         f"Texto do contrato:\n{texto}"
     )
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
