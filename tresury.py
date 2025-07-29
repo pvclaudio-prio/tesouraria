@@ -31,7 +31,6 @@ import openai
 import docx
 import uuid
 import openpyxl
-import tiktoken
 
 st.set_page_config(layout = 'wide')
 
@@ -326,30 +325,26 @@ def aba_validacao_clausulas():
 
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
-def dividir_em_chunks_por_token(texto, max_tokens=3000):
-    enc = tiktoken.encoding_for_model("gpt-4o")
+def dividir_em_chunks(texto, max_chars=8000):
     paragrafos = texto.split("\n\n")
     chunks = []
     chunk_atual = ""
 
     for p in paragrafos:
-        tokens = len(enc.encode(chunk_atual + p))
-        if tokens > max_tokens:
-            if chunk_atual:
-                chunks.append(chunk_atual.strip())
-            chunk_atual = p + "\n\n"
-        else:
+        if len(chunk_atual) + len(p) + 2 < max_chars:
             chunk_atual += p + "\n\n"
+        else:
+            chunks.append(chunk_atual.strip())
+            chunk_atual = p + "\n\n"
 
     if chunk_atual:
         chunks.append(chunk_atual.strip())
-
     return chunks
 
 def extrair_clausulas_com_agente(texto):
     st.info("🔍 Iniciando extração das cláusulas...")
 
-    chunks = dividir_em_chunks_por_token(texto)
+    chunks = dividir_em_chunks(texto)
     clausulas_total = []
 
     for i, chunk in enumerate(chunks):
