@@ -325,7 +325,6 @@ def aba_validacao_clausulas():
             salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
             st.success("✅ Cláusulas salvas com sucesso!")
 
-
 def extrair_texto_docx(caminho_arquivo):
     doc = docx.Document(caminho_arquivo)
     texto = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
@@ -347,19 +346,118 @@ def extrair_texto_pdf_document_ai(caminho_pdf):
 
     return result.document.text
 
-def carregar_texto_contrato_streamlit(arquivo_streamlit):
-    extensao = arquivo_streamlit.name.split(".")[-1].lower()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{extensao}") as tmp:
-        tmp.write(arquivo_streamlit.read())
-        caminho_local = tmp.name
+def carregar_texto_contrato(titulo_arquivo, arquivo_id):
+    drive = conectar_drive()
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
 
-    if extensao == "docx":
-        return extrair_texto_docx(caminho_local)
-    elif extensao == "pdf":
-        return extrair_texto_pdf_document_ai(caminho_local)
+    if titulo_arquivo.lower().endswith(".docx"):
+        doc = docx.Document(caminho_temp)
+        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    elif titulo_arquivo.lower().endswith(".pdf"):
+        texto = executar_document_ai(caminho_temp)
     else:
         st.error("Formato de arquivo não suportado.")
-        return ""
+        texto = ""
+    return texto
+
+def dividir_por_secoes_numeradas(texto):
+    padrao = r"(?=\n?\d{1,2}(\.\d{1,2})*\s)"
+    secoes = re.split(padrao, texto)
+    secoes = [s.strip() for s in secoes if len(s.strip()) > 30]
+    return secoes
+
+def extrair_clausulas_robusto(texto):
+    st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
+    openai.api_key = st.secrets["openai"]["api_key"]
+
+    secoes = dividir_por_secoes_numeradas(texto)
+    clausulas_extraidas = []
+
+    prompt_base = """
+Você é um advogado especialista em contratos de dívida internacionais.
+
+Sua tarefa é identificar cláusulas contratuais completas — aquelas que representam obrigações, condições, definições, garantias ou penalidades contratuais.
+
+Leia o texto abaixo e extraia todas as cláusulas jurídicas encontradas. Cada cláusula deve começar com sua numeração (ex: 1., 2.1, 3.1.4), seguida do título (se existir) e o texto completo da cláusula.
+
+TEXTO DO CONTRATO:
+\"\"\"{secao}\"\"\"
+
+Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentários.
+"""
+
+    for i, secao in enumerate(secoes):
+        with st.spinner(f"🔎 Processando seção {i+1} de {len(secoes)}..."):
+            prompt = prompt_base.format(secao=secao)
+            try:
+                resposta = openai.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Você é um advogado especialista em leitura contratual."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=2048
+                )
+                resultado = resposta.choices[0].message.content.strip()
+                linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
+                clausulas_extraidas.extend(linhas)
+                time.sleep(1)  # rate limit protection
+            except Exception as e:
+                clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
+
+    # Reorganização e limpeza
+    clausulas_final = []
+    for idx, linha in enumerate(clausulas_extraidas, start=1):
+        texto_limpo = re.sub(r"^\d+(\.\d+)*\s*", "", linha)
+        clausulas_final.append(f"{idx}. {texto_limpo}")
+
+    df = pd.DataFrame(clausulas_final, columns=["clausula"])
+    return df
+
+def aba_validacao_clausulas():
+    st.title("🧾 Validação das Cláusulas")
+
+    df_base = carregar_base_contratos()
+    if df_base.empty:
+        st.warning("Nenhum contrato disponível.")
+        return
+
+    # Seleciona o contrato
+    contrato_selecionado = st.selectbox("Selecione o contrato:", df_base["nome_arquivo"].unique())
+    linha = df_base[df_base["nome_arquivo"] == contrato_selecionado].iloc[0]
+    titulo_arquivo = linha["nome_arquivo"]
+    id_contrato = linha["id_contrato"]
+
+    # Carrega texto bruto
+    arquivos_disponiveis = obter_contratos_disponiveis()
+    _, id_arquivo = next((t, i) for t, i in arquivos_disponiveis if t == titulo_arquivo)
+    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
+
+    with st.expander("📄 Texto Extraído do Contrato"):
+        st.text_area("Texto do Contrato", texto, height=400)
+
+    if st.button("💬 Extrair Cláusulas com IA"):
+        df_clausulas = extrair_clausulas_robusto(texto)
+        st.session_state.df_clausulas_extraidas = df_clausulas
+        st.success("✅ Cláusulas extraídas com sucesso!")
+
+    if "df_clausulas_extraidas" in st.session_state:
+        st.markdown("### ✏️ Revise as cláusulas extraídas:")
+        df_editado = st.data_editor(
+            st.session_state.df_clausulas_extraidas,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_clausulas"
+        )
+
+        if st.button("✅ Validar cláusulas e salvar"):
+            # Atualiza o registro na base de contratos
+            clausulas_txt = "\n".join(df_editado["clausula"].tolist())
+            df_base.loc[df_base["id_contrato"] == id_contrato, "clausulas"] = clausulas_txt
+            salvar_base_contratos(df_base)
+            st.success("📁 Cláusulas salvas com sucesso na base de contratos.")
 
     
 # =========================
@@ -389,10 +487,7 @@ if pagina == "📂 Upload do Contrato":
     aba_upload_contrato(user_email=st.session_state.username)
     
 elif pagina == "🧾 Validação das Cláusulas":
-    arquivo = st.file_uploader("📎 Envie o contrato (.docx ou .pdf)", type=["docx", "pdf"])
-    if arquivo:
-        texto_extraido = carregar_texto_contrato_streamlit(arquivo)
-        st.text_area("📄 Texto Extraído", texto_extraido, height=400)
+    aba_validacao_clausulas()
     
 elif pagina == "🔍 Análise Automática":
     st.info("Execução dos agentes financeiros e jurídicos.")
