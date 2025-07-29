@@ -330,7 +330,8 @@ def dividir_por_secoes_numeradas(texto):
     Divide o texto contratual com base em seções numeradas (ex: 1., 2.1, 3.4.5).
     Retorna uma lista com blocos de texto representando cada seção.
     """
-    padrao = r"(?=\n?\d{1,2}(\.\d{1,2})*\s)"
+    import re
+    padrao = r"(?=\n?\d{1,2}(?:\.\d{1,2})*\s)"  # <-- corrigido: grupo não capturável
     secoes = re.split(padrao, texto)
     secoes = [s.strip() for s in secoes if len(s.strip()) > 30]
     return secoes
@@ -340,6 +341,11 @@ def extrair_clausulas_com_agente(texto):
     Divide o contrato por seções numeradas e envia cada uma delas ao GPT-4o,
     solicitando a extração das cláusulas jurídicas identificadas em cada trecho.
     """
+    import time
+    import openai
+    import pandas as pd
+    import re
+
     st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
     openai.api_key = st.secrets["openai"]["api_key"]
 
@@ -375,7 +381,7 @@ Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentári
                 resultado = resposta.choices[0].message.content.strip()
                 linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
                 clausulas_extraidas.extend(linhas)
-                time.sleep(1)  # proteção contra rate limit
+                time.sleep(1)  # proteção contra throttling
             except Exception as e:
                 clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
     
@@ -387,6 +393,7 @@ Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentári
 
     df = pd.DataFrame(clausulas_final, columns=["clausula"])
     return df
+
     
 # =========================
 # Salvar cláusulas extraídas
