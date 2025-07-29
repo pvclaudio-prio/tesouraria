@@ -75,7 +75,7 @@ if not st.session_state.logged_in:
 # -----------------------------
 # Menu lateral após login
 # -----------------------------
-st.sidebar.image("PRIO_SEM_POLVO_PRIO_PANTONE_LOGOTIPO_Azul.png", use_container_width=True)
+st.sidebar.image("PRIO_SEM_POLVO_PRIO_PANTONE_LOGOTIPO_Azul.png")
 
 nome_usuario = users[st.session_state.username]["name"]
 st.sidebar.success(f"Logado como: {nome_usuario}")
