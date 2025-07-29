@@ -423,9 +423,8 @@ Each of the following events shall constitute an Event of Default: (a) failure b
 Com base nesses exemplos, extraia as cláusulas do texto abaixo. A extração deve seguir o mesmo formato: número, título e conteúdo completo da cláusula.
 
 Texto do contrato:
-"""
+
 [TEXTO AQUI]
-"""
 
 Responda apenas com a lista de cláusulas.
 
