@@ -70,8 +70,6 @@ pagina = st.sidebar.radio("Ir para:", [
     "📁 Base de Cláusulas Padrão"
 ])
 
-st.markdown(f"### 👤 Usuário: `{nome_usuario}`")
-
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
