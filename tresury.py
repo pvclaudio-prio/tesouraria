@@ -33,6 +33,7 @@ from google.oauth2 import service_account
 import openai
 import docx
 import os
+import uuid
 
 st.set_page_config(layout = 'wide')
 
