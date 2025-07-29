@@ -138,6 +138,55 @@ def obter_id_pasta(nome_pasta, parent_id=None):
 # =========================
 # Base de contratos
 # =========================
+
+def aba_upload_contrato(user_email):
+    st.title("📂 Upload do Contrato")
+
+    st.markdown("Faça upload de um contrato em `.pdf` ou `.docx` e preencha os dados abaixo.")
+
+    arquivo = st.file_uploader("Selecione o contrato", type=["pdf", "docx"])
+    instituicao = st.text_input("Instituição Financeira")
+    idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
+
+    if st.button("📤 Enviar Contrato"):
+        if not arquivo or not instituicao:
+            st.warning("Por favor, preencha todos os campos e envie um arquivo.")
+            return
+
+        drive = conectar_drive()
+        pasta_contratos_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
+
+        id_contrato = str(uuid.uuid4())
+        nome_final = f"{id_contrato}_{arquivo.name}"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{arquivo.name.split('.')[-1]}") as tmp:
+            tmp.write(arquivo.read())
+            caminho_local = tmp.name
+
+        novo_arquivo = drive.CreateFile({
+            'title': nome_final,
+            'parents': [{'id': pasta_contratos_id}]
+        })
+        novo_arquivo.SetContentFile(caminho_local)
+        novo_arquivo.Upload()
+
+        df = carregar_base_contratos()
+        novo = {
+            "id_contrato": id_contrato,
+            "nome_arquivo": nome_final,
+            "tipo": arquivo.name.split(".")[-1],
+            "idioma": idioma,
+            "instituicao_financeira": instituicao,
+            "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "usuario_upload": user_email,
+            "clausulas": "",
+            "user_email": user_email
+        }
+        df = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
+        salvar_base_contratos(df)
+
+        st.success("✅ Contrato enviado e registrado com sucesso.")
+
 def carregar_base_contratos():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
