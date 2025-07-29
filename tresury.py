@@ -325,27 +325,56 @@ def aba_validacao_clausulas():
 
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
+def dividir_em_chunks(texto, max_chars=8000):
+    """
+    Divide o texto em chunks menores, respeitando quebras de parágrafo.
+    """
+    paragrafos = texto.split("\n")
+    chunks = []
+    chunk_atual = ""
+
+    for p in paragrafos:
+        if len(chunk_atual) + len(p) + 1 < max_chars:
+            chunk_atual += p + "\n"
+        else:
+            chunks.append(chunk_atual.strip())
+            chunk_atual = p + "\n"
+
+    if chunk_atual:
+        chunks.append(chunk_atual.strip())
+
+    return chunks
+
 def extrair_clausulas_com_agente(texto):
-    if len(texto) > 10000:
-        texto = texto[:10000]  # Limita para evitar estouro de tokens
+    chunks = dividir_em_chunks(texto)
+    clausulas_gerais = []
 
-    prompt = (
-        "Você é um assistente jurídico. Extraia todas as cláusulas do contrato a seguir. "
-        "Numere as cláusulas de forma sequencial (1., 2., 3., etc). "
-        "Não repita o texto completo do contrato, apenas liste as cláusulas identificadas.\n\n"
-        f"Texto do contrato:\n{texto}"
-    )
+    for i, chunk in enumerate(chunks):
+        prompt = (
+            f"Você é um assistente jurídico. Extraia todas as cláusulas do contrato a seguir "
+            f"(parte {i+1} de {len(chunks)}). "
+            "Numere as cláusulas de forma sequencial nesta parte. "
+            "Não repita o texto completo do contrato, apenas liste as cláusulas identificadas.\n\n"
+            f"{chunk}"
+        )
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,
-        max_tokens=4000
-    )
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=4000
+        )
 
-    clausulas_raw = response.choices[0].message.content.strip()
-    clausulas = [linha.strip() for linha in clausulas_raw.split("\n") if linha.strip()]
-    df = pd.DataFrame(clausulas, columns=["clausula"])
+        texto_resposta = response.choices[0].message.content.strip()
+        clausulas_chunk = [linha.strip() for linha in texto_resposta.split("\n") if linha.strip()]
+        clausulas_gerais.extend(clausulas_chunk)
+
+    # Re-enumerar cláusulas após juntar todas
+    clausulas_reenumeradas = []
+    for i, linha in enumerate(clausulas_gerais, start=1):
+        clausulas_reenumeradas.append(f"{i}. {re.sub(r'^\d+\.\s*', '', linha)}")
+
+    df = pd.DataFrame(clausulas_reenumeradas, columns=["clausula"])
     return df
 
 # =========================
