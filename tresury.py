@@ -1,4 +1,11 @@
 import streamlit as st
+import pandas as pd
+from datetime import datetime
+import tempfile
+from pydrive.auth import GoogleAuth
+from pydrive.drive import GoogleDrive
+from oauth2client.client import OAuth2Credentials
+import httplib2
 
 st.set_page_config(layout = 'wide')
 
@@ -71,6 +78,114 @@ pagina = st.sidebar.radio("Ir para:", [
 ])
 
 # -----------------------------
+# Funções
+# -----------------------------
+
+def conectar_drive():
+    cred_dict = st.secrets["credentials"]
+
+    credentials = OAuth2Credentials(
+        access_token=cred_dict["access_token"],
+        client_id=cred_dict["client_id"],
+        client_secret=cred_dict["client_secret"],
+        refresh_token=cred_dict["refresh_token"],
+        token_expiry=datetime.strptime(cred_dict["token_expiry"], "%Y-%m-%dT%H:%M:%SZ"),
+        token_uri=cred_dict["token_uri"],
+        user_agent="streamlit-app/1.0",
+        revoke_uri=cred_dict["revoke_uri"]
+    )
+
+    if credentials.access_token_expired:
+        credentials.refresh(httplib2.Http())
+
+    gauth = GoogleAuth()
+    gauth.credentials = credentials
+    return GoogleDrive(gauth)
+
+def obter_id_pasta(nome_pasta, parent_id=None):
+    drive = conectar_drive()
+    query = f"title = '{nome_pasta}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    if parent_id:
+        query += f" and '{parent_id}' in parents"
+    resultado = drive.ListFile({'q': query}).GetList()
+    if resultado:
+        return resultado[0]['id']
+    return None
+
+def carregar_base_prio():
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    if not pasta_bases_id:
+        st.error("Pasta 'bases' não encontrada.")
+        return pd.DataFrame()
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("Arquivo 'empresa_referencia_PRIO.xlsx' não encontrado.")
+        return pd.DataFrame()
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    df = pd.read_excel(caminho_temp)
+    return df
+
+def salvar_base_prio(df):
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    # Salva temp
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    df.to_excel(caminho_temp, index=False)
+
+    # Atualiza arquivo original
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
+    }).GetList()
+
+    if arquivos:
+        arquivo = arquivos[0]
+    else:
+        arquivo = drive.CreateFile({
+            'title': 'empresa_referencia_PRIO.xlsx',
+            'parents': [{'id': pasta_bases_id}]
+        })
+
+    arquivo.SetContentFile(caminho_temp)
+    arquivo.Upload()
+
+    # Backup
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = drive.CreateFile({
+        'title': f'empresa_referencia_PRIO__{timestamp}.xlsx',
+        'parents': [{'id': pasta_backups_id}]
+    })
+    backup.SetContentFile(caminho_temp)
+    backup.Upload()
+
+    st.success("✅ Alterações salvas e backup criado com sucesso.")
+
+def aba_indices_prio():
+    st.title("📊 Índices PRIO - Editar Dados Financeiros")
+
+    df = carregar_base_prio()
+    if df.empty:
+        st.stop()
+
+    st.markdown("Edite os dados abaixo. Você pode adicionar ou excluir linhas:")
+    df_editado = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor_prio"
+    )
+
+    if st.button("💾 Salvar alterações"):
+        salvar_base_prio(df_editado)
+# -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
 if pagina == "📂 Upload do Contrato":
@@ -86,7 +201,7 @@ elif pagina == "🧑‍⚖️ Revisão Final":
     st.info("Revisão final das cláusulas com input do usuário.")
     
 elif pagina == "📊 Índices PRIO":
-    st.info("Edição dos indicadores financeiros da PRIO.")
+    aba_indices_prio()
     
 elif pagina == "📘 Relatórios Gerenciais":
     st.info("Geração de relatórios estratégicos com IA.")
