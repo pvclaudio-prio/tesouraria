@@ -217,7 +217,7 @@ def aba_upload_contrato(user_email):
     instituicao = st.text_input("Instituição Financeira")
     idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
 
-    if st.button("📤 Enviar para a Base"):
+    if st.button("📤 Enviar Contrato"):
         if not arquivo or not instituicao:
             st.warning("Por favor, preencha todos os campos e envie um arquivo.")
             return
