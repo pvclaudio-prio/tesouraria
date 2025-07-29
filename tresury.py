@@ -337,17 +337,9 @@ def dividir_por_secoes_numeradas(texto):
     return secoes
 
 def extrair_clausulas_com_agente(texto):
-    """
-    Divide o contrato por seções numeradas e envia cada uma delas ao GPT-4o,
-    solicitando a extração das cláusulas jurídicas identificadas em cada trecho.
-    """
-    import time
-    import openai
-    import pandas as pd
-    import re
 
     st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
-    openai.api_key = st.secrets["openai"]["api_key"]
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
     secoes = dividir_por_secoes_numeradas(texto)
     clausulas_extraidas = []
@@ -369,7 +361,7 @@ Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentári
         with st.spinner(f"🔎 Processando seção {i+1} de {len(secoes)}..."):
             prompt = prompt_base.format(secao=secao)
             try:
-                resposta = openai.ChatCompletion.create(
+                resposta = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
                         {"role": "system", "content": "Você é um advogado especialista em leitura contratual."},
@@ -381,11 +373,10 @@ Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentári
                 resultado = resposta.choices[0].message.content.strip()
                 linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
                 clausulas_extraidas.extend(linhas)
-                time.sleep(1)  # proteção contra throttling
+                time.sleep(1)
             except Exception as e:
                 clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
     
-    # Reorganização e limpeza
     clausulas_final = []
     for idx, linha in enumerate(clausulas_extraidas, start=1):
         texto_limpo = re.sub(r"^\d+(\.\d+)*\s*", "", linha)
