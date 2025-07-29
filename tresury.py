@@ -362,10 +362,28 @@ def carregar_texto_contrato(titulo_arquivo, arquivo_id):
     return texto
 
 def dividir_por_secoes_numeradas(texto):
+    """
+    Divide o texto contratual com base em seções numeradas (ex: 1., 2.1, 3.4.5).
+    Retorna uma lista com blocos de texto representando cada seção.
+    """
+    if not isinstance(texto, str):
+        st.error("❌ O texto fornecido não é uma string válida.")
+        return []
+
     padrao = r"(?=\n?\d{1,2}(\.\d{1,2})*\s)"
     secoes = re.split(padrao, texto)
-    secoes = [s.strip() for s in secoes if len(s.strip()) > 30]
-    return secoes
+
+    # Garantir que todos os elementos sejam string e significativos
+    secoes_limpos = []
+    for s in secoes:
+        try:
+            s_clean = str(s).strip()
+            if len(s_clean) > 30:
+                secoes_limpos.append(s_clean)
+        except:
+            continue
+
+    return secoes_limpos
 
 def extrair_clausulas_robusto(texto):
     st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
