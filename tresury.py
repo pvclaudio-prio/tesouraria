@@ -30,6 +30,7 @@ from google.oauth2 import service_account
 import openai
 import docx
 import uuid
+from pandas import openpyxl
 
 st.set_page_config(layout = 'wide')
 
