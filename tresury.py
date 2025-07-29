@@ -251,20 +251,24 @@ def obter_contratos_disponiveis():
     arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
     return [(arq['title'], arq['id']) for arq in arquivos]
 
-def carregar_texto_contrato(titulo_arquivo, arquivo_id):
-    drive = conectar_drive()
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
+def carregar_texto_contrato(caminho):
+    doc = Document(caminho)
+    textos = []
 
-    if titulo_arquivo.lower().endswith(".docx"):
-        doc = docx.Document(caminho_temp)
-        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-    elif titulo_arquivo.lower().endswith(".pdf"):
-        texto = executar_document_ai(caminho_temp)
-    else:
-        st.error("Formato de arquivo não suportado.")
-        texto = ""
-    return texto
+    # Parágrafos simples
+    for p in doc.paragraphs:
+        if p.text.strip():
+            textos.append(p.text.strip())
+
+    # Tabelas
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            if row_text:
+                textos.append(row_text)
+
+    return "\n".join(textos)
+
 
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
