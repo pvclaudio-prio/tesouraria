@@ -31,6 +31,7 @@ import openai
 import docx
 import uuid
 import openpyxl
+import time
 
 st.set_page_config(layout = 'wide')
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -327,13 +328,23 @@ def aba_validacao_clausulas():
 
 def dividir_por_secoes_numeradas(texto):
     """
-    Divide o texto contratual com base em seções numeradas (ex: 1., 2.1, 3.4.5).
-    Retorna uma lista com blocos de texto representando cada seção.
+    Divide o texto em blocos com base em seções numeradas do tipo:
+    1.
+    1.1
+    2.2.3
     """
-    import re
-    padrao = r"(?=\n?\d{1,2}(?:\.\d{1,2})*\s)"  # <-- corrigido: grupo não capturável
-    secoes = re.split(padrao, texto)
-    secoes = [s.strip() for s in secoes if len(s.strip()) > 30]
+    padrao = r"(?<=\n)(\d+(\.\d+)*)(\s|\n)"
+    partes = re.split(padrao, texto)
+    secoes = []
+    i = 0
+    while i < len(partes) - 1:
+        prefixo = partes[i].strip()
+        numero = partes[i+1].strip()
+        resto = partes[i+3].strip() if i+3 < len(partes) else ''
+        bloco = f"{numero} {resto}".strip()
+        if len(bloco) > 40:  # Ignora seções curtas/dummy
+            secoes.append(bloco)
+        i += 4
     return secoes
 
 def extrair_clausulas_com_agente(texto):
@@ -345,16 +356,18 @@ def extrair_clausulas_com_agente(texto):
     clausulas_extraidas = []
 
     prompt_base = """
-Você é um advogado especialista em contratos de dívida internacionais.
+Você é um advogado sênior especialista em contratos de dívida internacionais.
 
-Sua tarefa é identificar cláusulas contratuais completas — aquelas que representam obrigações, condições, definições, garantias ou penalidades contratuais.
+Extraia cláusulas contratuais completas do texto a seguir. Uma cláusula completa inclui:
 
-Leia o texto abaixo e extraia todas as cláusulas jurídicas encontradas. Cada cláusula deve começar com sua numeração (ex: 1., 2.1, 3.1.4), seguida do título (se existir) e o texto completo da cláusula.
+- Numeração (ex: 2.1, 3.4.2)
+- Título (se houver)
+- Texto completo da cláusula, com obrigações, definições, garantias ou penalidades
 
-TEXTO DO CONTRATO:
+Responda apenas com a lista de cláusulas, uma por linha. Não resuma, traduza ou comente.
+
+TEXTO:
 \"\"\"{secao}\"\"\"
-
-Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentários.
 """
 
     for i, secao in enumerate(secoes):
