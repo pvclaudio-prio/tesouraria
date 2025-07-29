@@ -326,77 +326,40 @@ def aba_validacao_clausulas():
             st.success("✅ Cláusulas salvas com sucesso!")
 
 
-def dividir_por_secoes_numeradas(texto):
-    """
-    Divide o texto em blocos com base em seções numeradas do tipo:
-    1.
-    1.1
-    2.2.3
-    """
-    padrao = r"(?<=\n)(\d+(\.\d+)*)(\s|\n)"
-    partes = re.split(padrao, texto)
-    secoes = []
-    i = 0
-    while i < len(partes) - 1:
-        prefixo = partes[i].strip()
-        numero = partes[i+1].strip()
-        resto = partes[i+3].strip() if i+3 < len(partes) else ''
-        bloco = f"{numero} {resto}".strip()
-        if len(bloco) > 40:  # Ignora seções curtas/dummy
-            secoes.append(bloco)
-        i += 4
-    return secoes
+def extrair_texto_docx(caminho_arquivo):
+    doc = docx.Document(caminho_arquivo)
+    texto = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+    return texto
 
-def extrair_clausulas_com_agente(texto):
+def extrair_texto_pdf_document_ai(caminho_pdf):
+    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
+    project_id = st.secrets["gcp_docai"]["project_id"]
+    processor_id = st.secrets["gcp_docai"]["processor_id"]
+    location = "us"
 
-    st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
-    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
+    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
-    secoes = dividir_por_secoes_numeradas(texto)
-    clausulas_extraidas = []
+    with open(caminho_pdf, "rb") as f:
+        raw_document = {"content": f.read(), "mime_type": "application/pdf"}
+    request = {"name": name, "raw_document": raw_document}
+    result = client.process_document(request=request)
 
-    prompt_base = """
-Você é um advogado sênior especialista em contratos de dívida internacionais.
+    return result.document.text
 
-Extraia cláusulas contratuais completas do texto a seguir. Uma cláusula completa inclui:
+def carregar_texto_contrato_streamlit(arquivo_streamlit):
+    extensao = arquivo_streamlit.name.split(".")[-1].lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{extensao}") as tmp:
+        tmp.write(arquivo_streamlit.read())
+        caminho_local = tmp.name
 
-- Numeração (ex: 2.1, 3.4.2)
-- Título (se houver)
-- Texto completo da cláusula, com obrigações, definições, garantias ou penalidades
-
-Responda apenas com a lista de cláusulas, uma por linha. Não resuma, traduza ou comente.
-
-TEXTO:
-\"\"\"{secao}\"\"\"
-"""
-
-    for i, secao in enumerate(secoes):
-        with st.spinner(f"🔎 Processando seção {i+1} de {len(secoes)}..."):
-            prompt = prompt_base.format(secao=secao)
-            try:
-                resposta = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "Você é um advogado especialista em leitura contratual."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.1,
-                    max_tokens=2048
-                )
-                resultado = resposta.choices[0].message.content.strip()
-                linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
-                clausulas_extraidas.extend(linhas)
-                time.sleep(1)
-            except Exception as e:
-                clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
-    
-    clausulas_final = []
-    for idx, linha in enumerate(clausulas_extraidas, start=1):
-        texto_limpo = re.sub(r"^\d+(\.\d+)*\s*", "", linha)
-        clausulas_final.append(f"{idx}. {texto_limpo}")
-
-    df = pd.DataFrame(clausulas_final, columns=["clausula"])
-    return df
+    if extensao == "docx":
+        return extrair_texto_docx(caminho_local)
+    elif extensao == "pdf":
+        return extrair_texto_pdf_document_ai(caminho_local)
+    else:
+        st.error("Formato de arquivo não suportado.")
+        return ""
 
     
 # =========================
@@ -419,7 +382,6 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_emai
     df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
     salvar_base_contratos(df)
 
-            
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
@@ -427,7 +389,10 @@ if pagina == "📂 Upload do Contrato":
     aba_upload_contrato(user_email=st.session_state.username)
     
 elif pagina == "🧾 Validação das Cláusulas":
-    aba_validacao_clausulas()
+    arquivo = st.file_uploader("📎 Envie o contrato (.docx ou .pdf)", type=["docx", "pdf"])
+    if arquivo:
+        texto_extraido = carregar_texto_contrato_streamlit(arquivo)
+        st.text_area("📄 Texto Extraído", texto_extraido, height=400)
     
 elif pagina == "🔍 Análise Automática":
     st.info("Execução dos agentes financeiros e jurídicos.")
