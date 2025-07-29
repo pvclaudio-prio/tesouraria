@@ -207,11 +207,58 @@ def aba_indices_prio():
 
     if st.button("💾 Salvar alterações"):
         salvar_base_prio(df_editado)
+
+def aba_upload_contrato(user_email):
+    st.title("📂 Upload do Contrato")
+
+    st.markdown("Faça upload de um contrato em `.pdf` ou `.docx` e preencha os dados abaixo.")
+
+    arquivo = st.file_uploader("Selecione o contrato", type=["pdf", "docx"])
+    instituicao = st.text_input("Instituição Financeira")
+    idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
+
+    if st.button("📤 Enviar para o Drive"):
+        if not arquivo or not instituicao:
+            st.warning("Por favor, preencha todos os campos e envie um arquivo.")
+            return
+
+        drive = conectar_drive()
+        pasta_contratos_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
+
+        id_contrato = str(uuid.uuid4())
+        nome_final = f"{id_contrato}_{arquivo.name}"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{arquivo.name.split('.')[-1]}") as tmp:
+            tmp.write(arquivo.read())
+            caminho_local = tmp.name
+
+        novo_arquivo = drive.CreateFile({
+            'title': nome_final,
+            'parents': [{'id': pasta_contratos_id}]
+        })
+        novo_arquivo.SetContentFile(caminho_local)
+        novo_arquivo.Upload()
+
+        df = carregar_base_contratos()
+        novo = {
+            "id_contrato": id_contrato,
+            "nome_arquivo": nome_final,
+            "tipo": arquivo.name.split(".")[-1],
+            "idioma": idioma,
+            "instituicao_financeira": instituicao,
+            "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "user_email": user_email
+        }
+        df = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
+        salvar_base_contratos(df)
+
+        st.success("✅ Contrato enviado e registrado com sucesso.")
+
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
 if pagina == "📂 Upload do Contrato":
-    st.info("Área de upload dos contratos.")
+    aba_upload_contrato(user_email=st.session_state.username)
     
 elif pagina == "🧾 Validação das Cláusulas":
     st.info("Área de validação das cláusulas extraídas.")
