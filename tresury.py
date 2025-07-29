@@ -386,13 +386,27 @@ def dividir_por_secoes_numeradas(texto):
     return secoes_limpos
 
 def extrair_clausulas_robusto(texto):
-    st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
+    import tiktoken
+    import openai
+    from time import sleep
+
     openai.api_key = st.secrets["openai"]["api_key"]
+    enc = tiktoken.encoding_for_model("gpt-4")
 
-    secoes = dividir_por_secoes_numeradas(texto)
-    clausulas_extraidas = []
+    def chunk_text(texto, max_tokens=3000):
+        parags = texto.split("\n\n")
+        chunks, atual = [], ""
+        for p in parags:
+            if len(enc.encode(atual + p)) < max_tokens:
+                atual += p + "\n\n"
+            else:
+                chunks.append(atual.strip())
+                atual = p + "\n\n"
+        if atual:
+            chunks.append(atual.strip())
+        return chunks
 
-    prompt_base = """
+    prompt_exemplos = """
 Você é um advogado especialista em contratos internacionais.
 
 A seguir estão exemplos de cláusulas contratuais extraídas de contratos de crédito:
@@ -417,44 +431,29 @@ The Borrower represents and warrants that it is duly incorporated, validly exist
 
 7. Events of Default
 Each of the following events shall constitute an Event of Default: (a) failure by the Borrower to pay any amount when due under this Agreement; (b) any representation or warranty made by the Borrower is untrue or misleading in any material respect; (c) the Borrower becomes insolvent or is unable to pay its debts; (d) any corporate action or legal proceeding is commenced against the Borrower seeking bankruptcy, reorganization or any other similar relief.
-
----
-
-Com base nesses exemplos, extraia as cláusulas do texto abaixo. A extração deve seguir o mesmo formato: número, título e conteúdo completo da cláusula.
-
-Texto do contrato:
-
-[TEXTO AQUI]
-
-Responda apenas com a lista de cláusulas.
-
 """
 
-    for i, secao in enumerate(secoes):
-        with st.spinner(f"🔎 Processando seção {i+1} de {len(secoes)}..."):
-            prompt = prompt_base.format(secao=secao)
+    clausulas_final = []
+    partes = chunk_text(texto)
+
+    for i, parte in enumerate(partes):
+        with st.spinner(f"🧠 Extraindo cláusulas (parte {i+1}/{len(partes)})..."):
+            prompt = f"{prompt_exemplos}\n\nAgora, extraia as cláusulas do seguinte trecho:\n\n\"\"\"{parte}\"\"\"\n\nResponda apenas com a lista de cláusulas."
             try:
-                resposta = openai.chat.completions.create(
+                resp = openai.chat.completions.create(
                     model="gpt-4o",
                     messages=[
-                        {"role": "system", "content": "Você é um advogado especialista em leitura contratual."},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.1,
-                    max_tokens=2048
+                    temperature=0,
+                    max_tokens=4096
                 )
-                resultado = resposta.choices[0].message.content.strip()
-                linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
-                clausulas_extraidas.extend(linhas)
-                time.sleep(1)  # rate limit protection
+                saida = resp.choices[0].message.content.strip()
+                linhas = [l.strip() for l in saida.split("\n") if l.strip()]
+                clausulas_final.extend(linhas)
+                sleep(1)
             except Exception as e:
-                clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
-
-    # Reorganização e limpeza
-    clausulas_final = []
-    for idx, linha in enumerate(clausulas_extraidas, start=1):
-        texto_limpo = re.sub(r"^\d+(\.\d+)*\s*", "", linha)
-        clausulas_final.append(f"{idx}. {texto_limpo}")
+                st.error(f"Erro ao processar parte {i+1}: {e}")
 
     df = pd.DataFrame(clausulas_final, columns=["clausula"])
     return df
