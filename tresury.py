@@ -33,6 +33,7 @@ import uuid
 import openpyxl
 
 st.set_page_config(layout = 'wide')
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 # -----------------------------
 # Validação Usuários com st.secrets
@@ -323,60 +324,70 @@ def aba_validacao_clausulas():
             salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
             st.success("✅ Cláusulas salvas com sucesso!")
 
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
-def dividir_em_chunks(texto, max_chars=8000):
-    paragrafos = texto.split("\n\n")
-    chunks = []
-    chunk_atual = ""
-
-    for p in paragrafos:
-        if len(chunk_atual) + len(p) + 2 < max_chars:
-            chunk_atual += p + "\n\n"
-        else:
-            chunks.append(chunk_atual.strip())
-            chunk_atual = p + "\n\n"
-
-    if chunk_atual:
-        chunks.append(chunk_atual.strip())
-    return chunks
+def dividir_por_secoes_numeradas(texto):
+    """
+    Divide o texto contratual com base em seções numeradas (ex: 1., 2.1, 3.4.5).
+    Retorna uma lista com blocos de texto representando cada seção.
+    """
+    padrao = r"(?=\n?\d{1,2}(\.\d{1,2})*\s)"
+    secoes = re.split(padrao, texto)
+    secoes = [s.strip() for s in secoes if len(s.strip()) > 30]
+    return secoes
 
 def extrair_clausulas_com_agente(texto):
-    st.info("🔍 Iniciando extração das cláusulas...")
+    """
+    Divide o contrato por seções numeradas e envia cada uma delas ao GPT-4o,
+    solicitando a extração das cláusulas jurídicas identificadas em cada trecho.
+    """
+    st.info("🔍 Iniciando extração das cláusulas com análise por seção numerada...")
+    openai.api_key = st.secrets["openai"]["api_key"]
 
-    chunks = dividir_em_chunks(texto)
-    clausulas_total = []
+    secoes = dividir_por_secoes_numeradas(texto)
+    clausulas_extraidas = []
 
-    for i, chunk in enumerate(chunks):
-        with st.spinner(f"Processando parte {i+1} de {len(chunks)}..."):
-            prompt = (
-                "Você é um assistente jurídico. Extraia todas as cláusulas do contrato abaixo. "
-                "Cada cláusula deve começar com a numeração (1., 2., 3., etc). "
-                "Inclua título (se houver) e o texto completo da cláusula. "
-                "Extraia apenas cláusulas, sem comentários adicionais.\n\n"
-                f"{chunk}"
-            )
+    prompt_base = """
+Você é um advogado especialista em contratos de dívida internacionais.
 
-            resposta = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=4000
-            )
+Sua tarefa é identificar cláusulas contratuais completas — aquelas que representam obrigações, condições, definições, garantias ou penalidades contratuais.
 
-            saida = resposta.choices[0].message.content.strip()
-            linhas = [l.strip() for l in saida.split("\n") if l.strip()]
-            clausulas_total.extend(linhas)
+Leia o texto abaixo e extraia todas as cláusulas jurídicas encontradas. Cada cláusula deve começar com sua numeração (ex: 1., 2.1, 3.1.4), seguida do título (se existir) e o texto completo da cláusula.
 
-    # Reenumeação e limpeza final
+TEXTO DO CONTRATO:
+\"\"\"{secao}\"\"\"
+
+Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentários.
+"""
+
+    for i, secao in enumerate(secoes):
+        with st.spinner(f"🔎 Processando seção {i+1} de {len(secoes)}..."):
+            prompt = prompt_base.format(secao=secao)
+            try:
+                resposta = openai.ChatCompletion.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Você é um advogado especialista em leitura contratual."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=2048
+                )
+                resultado = resposta.choices[0].message.content.strip()
+                linhas = [linha.strip() for linha in resultado.split("\n") if linha.strip()]
+                clausulas_extraidas.extend(linhas)
+                time.sleep(1)  # proteção contra rate limit
+            except Exception as e:
+                clausulas_extraidas.append(f"[Erro na seção {i+1}]: {e}")
+    
+    # Reorganização e limpeza
     clausulas_final = []
-    for idx, linha in enumerate(clausulas_total, start=1):
-        clausula_limpa = re.sub(r"^\d+\.\s*", "", linha)
-        clausulas_final.append(f"{idx}. {clausula_limpa}")
+    for idx, linha in enumerate(clausulas_extraidas, start=1):
+        texto_limpo = re.sub(r"^\d+(\.\d+)*\s*", "", linha)
+        clausulas_final.append(f"{idx}. {texto_limpo}")
 
     df = pd.DataFrame(clausulas_final, columns=["clausula"])
     return df
-
+    
 # =========================
 # Salvar cláusulas extraídas
 # =========================
