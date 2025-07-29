@@ -393,16 +393,42 @@ def extrair_clausulas_robusto(texto):
     clausulas_extraidas = []
 
     prompt_base = """
-Você é um advogado especialista em contratos de dívida internacionais.
+Você é um advogado especialista em contratos internacionais.
 
-Sua tarefa é identificar cláusulas contratuais completas — aquelas que representam obrigações, condições, definições, garantias ou penalidades contratuais.
+A seguir estão exemplos de cláusulas contratuais extraídas de contratos de crédito:
 
-Leia o texto abaixo e extraia todas as cláusulas jurídicas encontradas. Cada cláusula deve começar com sua numeração (ex: 1., 2.1, 3.1.4), seguida do título (se existir) e o texto completo da cláusula.
+1. The Loan
+The Lender agrees, subject to the terms and conditions hereof, to make available to the Borrower the Loan, in one disbursement during the Availability Period upon receipt of a Drawdown Request from the Borrower not later than the Specified Time. The proceeds of the Loan shall be applied by the Borrower towards financing or refinancing the Eligible Goods and/or Services pursuant to the Commercial Contracts as described in Schedule 3 (Commercial Contracts).
 
-TEXTO DO CONTRATO:
-\"\"\"{secao}\"\"\"
+2. Repayment of the Loan
+The Borrower agrees to repay the principal of the Loan in one single installment on the Final Maturity Date. All repayments by the Borrower under this Agreement shall be made without set-off or counterclaim and free and clear of and without deduction for any taxes, levies, imports, duties, charges, fees, and withholdings of any nature. Partial prepayment is not allowed unless agreed by the Lender.
 
-Responda apenas com a lista de cláusulas. Não resuma nem acrescente comentários.
+3. Interest
+Interest shall accrue on the unpaid principal amount of the Loan at a fixed rate equal to the Fixed Rate plus the Margin. Interest shall be calculated on the basis of a 360-day year and payable semi-annually in arrears on each Interest Payment Date. Any overdue amounts shall bear default interest as set out in this Agreement.
+
+4. Prepayment
+The Borrower may, with at least 30 Business Days’ prior written notice, prepay the Loan in whole (but not in part) on any Interest Payment Date, subject to paying all accrued interest, break costs and other amounts due under this Agreement. No prepayment shall relieve the Borrower of its obligation to pay any amount due under this Agreement.
+
+5. Taxes
+All payments by the Borrower shall be made free and clear of any present or future taxes, levies, withholdings or deductions unless required by law. If any such deduction is required, the Borrower shall pay such additional amount as will ensure that the Lender receives the full amount it would have received had no such deduction been required.
+
+6. Representations and Warranties
+The Borrower represents and warrants that it is duly incorporated, validly existing, and in good standing. It has full power and authority to enter into and perform its obligations under this Agreement. The execution and delivery of this Agreement and the performance by the Borrower of its obligations hereunder have been duly authorized by all necessary corporate action.
+
+7. Events of Default
+Each of the following events shall constitute an Event of Default: (a) failure by the Borrower to pay any amount when due under this Agreement; (b) any representation or warranty made by the Borrower is untrue or misleading in any material respect; (c) the Borrower becomes insolvent or is unable to pay its debts; (d) any corporate action or legal proceeding is commenced against the Borrower seeking bankruptcy, reorganization or any other similar relief.
+
+---
+
+Com base nesses exemplos, extraia as cláusulas do texto abaixo. A extração deve seguir o mesmo formato: número, título e conteúdo completo da cláusula.
+
+Texto do contrato:
+"""
+[TEXTO AQUI]
+"""
+
+Responda apenas com a lista de cláusulas.
+
 """
 
     for i, secao in enumerate(secoes):
