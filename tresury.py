@@ -385,123 +385,134 @@ def dividir_por_secoes_numeradas(texto):
 
     return secoes_limpos
 
-def extrair_clausulas_robusto(texto):
-    import tiktoken
-    import openai
-    from time import sleep
+def dividir_em_chunks_simples(texto, max_chars=7000):
+    paragrafos = texto.split("\n\n")
+    chunks = []
+    atual = ""
 
-    openai.api_key = st.secrets["openai"]["api_key"]
-    enc = tiktoken.encoding_for_model("gpt-4")
-
-    def chunk_text(texto, max_tokens=3000):
-        parags = texto.split("\n\n")
-        chunks, atual = [], ""
-        for p in parags:
-            if len(enc.encode(atual + p)) < max_tokens:
-                atual += p + "\n\n"
-            else:
-                chunks.append(atual.strip())
-                atual = p + "\n\n"
-        if atual:
+    for p in paragrafos:
+        if len(atual) + len(p) + 2 <= max_chars:
+            atual += p + "\n\n"
+        else:
             chunks.append(atual.strip())
-        return chunks
+            atual = p + "\n\n"
+    if atual:
+        chunks.append(atual.strip())
 
-    prompt_exemplos = """
-Você é um advogado especialista em contratos internacionais.
+    return chunks
 
-A seguir estão exemplos de cláusulas contratuais extraídas de contratos de crédito:
+def gerar_prompt_com_exemplos(texto_chunk):
+    exemplos = """
+Exemplos de cláusulas extraídas corretamente:
 
-1. The Loan
-The Lender agrees, subject to the terms and conditions hereof, to make available to the Borrower the Loan, in one disbursement during the Availability Period upon receipt of a Drawdown Request from the Borrower not later than the Specified Time. The proceeds of the Loan shall be applied by the Borrower towards financing or refinancing the Eligible Goods and/or Services pursuant to the Commercial Contracts as described in Schedule 3 (Commercial Contracts).
+1. Definitions
+This Agreement, including its schedules and annexes, shall be interpreted according to the following definitions: “Borrower” refers to PRIO S.A., “Facility” means the total loan commitment...
 
-2. Repayment of the Loan
-The Borrower agrees to repay the principal of the Loan in one single installment on the Final Maturity Date. All repayments by the Borrower under this Agreement shall be made without set-off or counterclaim and free and clear of and without deduction for any taxes, levies, imports, duties, charges, fees, and withholdings of any nature. Partial prepayment is not allowed unless agreed by the Lender.
+2. Interest Rate
+The applicable interest rate shall be determined as the sum of the Margin (3.5%) and the Base Rate (SOFR), revised quarterly in accordance with market conditions.
 
-3. Interest
-Interest shall accrue on the unpaid principal amount of the Loan at a fixed rate equal to the Fixed Rate plus the Margin. Interest shall be calculated on the basis of a 360-day year and payable semi-annually in arrears on each Interest Payment Date. Any overdue amounts shall bear default interest as set out in this Agreement.
+3. Repayment Terms
+The Borrower agrees to repay the Facility in 8 equal semi-annual installments beginning 6 months after the disbursement date.
 
-4. Prepayment
-The Borrower may, with at least 30 Business Days’ prior written notice, prepay the Loan in whole (but not in part) on any Interest Payment Date, subject to paying all accrued interest, break costs and other amounts due under this Agreement. No prepayment shall relieve the Borrower of its obligation to pay any amount due under this Agreement.
+4. Events of Default
+The following shall constitute an Event of Default: (a) failure to pay any amount due; (b) breach of any covenant...
 
-5. Taxes
-All payments by the Borrower shall be made free and clear of any present or future taxes, levies, withholdings or deductions unless required by law. If any such deduction is required, the Borrower shall pay such additional amount as will ensure that the Lender receives the full amount it would have received had no such deduction been required.
-
-6. Representations and Warranties
-The Borrower represents and warrants that it is duly incorporated, validly existing, and in good standing. It has full power and authority to enter into and perform its obligations under this Agreement. The execution and delivery of this Agreement and the performance by the Borrower of its obligations hereunder have been duly authorized by all necessary corporate action.
-
-7. Events of Default
-Each of the following events shall constitute an Event of Default: (a) failure by the Borrower to pay any amount when due under this Agreement; (b) any representation or warranty made by the Borrower is untrue or misleading in any material respect; (c) the Borrower becomes insolvent or is unable to pay its debts; (d) any corporate action or legal proceeding is commenced against the Borrower seeking bankruptcy, reorganization or any other similar relief.
+5. Governing Law
+This Agreement shall be governed by and construed in accordance with the laws of England and Wales.
 """
 
-    clausulas_final = []
-    partes = chunk_text(texto)
+    prompt = f"""
+Você é um advogado especializado em contratos de crédito internacional.
 
-    for i, parte in enumerate(partes):
-        with st.spinner(f"🧠 Extraindo cláusulas (parte {i+1}/{len(partes)})..."):
-            prompt = f"{prompt_exemplos}\n\nAgora, extraia as cláusulas do seguinte trecho:\n\n\"\"\"{parte}\"\"\"\n\nResponda apenas com a lista de cláusulas."
+Extraia todas as cláusulas do texto a seguir. Cada cláusula deve conter:
+
+- Numeração (1., 2., 3.1, etc.)
+- Título da cláusula (se houver)
+- Texto completo da cláusula
+
+Não inclua resumos nem comentários. Apresente a lista como nos exemplos abaixo.
+
+{exemplos}
+
+Agora processe o seguinte trecho:
+
+\"\"\"{texto_chunk}\"\"\"
+"""
+    return prompt.strip()
+
+from openai import OpenAI
+
+def extrair_clausulas_robusto(texto):
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    st.info("🔍 Dividindo contrato em blocos para análise...")
+    partes = dividir_em_chunks_simples(texto)
+    clausulas_total = []
+
+    for i, chunk in enumerate(partes):
+        with st.spinner(f"🧠 Analisando trecho {i+1}/{len(partes)}..."):
+            prompt = gerar_prompt_com_exemplos(chunk)
             try:
-                resp = openai.chat.completions.create(
+                resposta = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
+                        {"role": "system", "content": "Você é um assistente jurídico especializado em cláusulas de contratos de dívida."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0,
                     max_tokens=4096
                 )
-                saida = resp.choices[0].message.content.strip()
+                saida = resposta.choices[0].message.content.strip()
                 linhas = [l.strip() for l in saida.split("\n") if l.strip()]
-                clausulas_final.extend(linhas)
-                sleep(1)
+                clausulas_total.extend(linhas)
             except Exception as e:
-                st.error(f"Erro ao processar parte {i+1}: {e}")
+                clausulas_total.append(f"[Erro no chunk {i+1}]: {e}")
 
-    df = pd.DataFrame(clausulas_final, columns=["clausula"])
+    df = pd.DataFrame(clausulas_total, columns=["clausula"])
     return df
 
 def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas")
+    st.title("🧾 Validação das Cláusulas Contratuais")
 
-    df_base = carregar_base_contratos()
-    if df_base.empty:
+    contratos = obter_contratos_disponiveis()
+    if not contratos:
         st.warning("Nenhum contrato disponível.")
         return
 
-    # Seleciona o contrato
-    contrato_selecionado = st.selectbox("Selecione o contrato:", df_base["nome_arquivo"].unique())
-    linha = df_base[df_base["nome_arquivo"] == contrato_selecionado].iloc[0]
-    titulo_arquivo = linha["nome_arquivo"]
-    id_contrato = linha["id_contrato"]
+    nomes_arquivos = [titulo for titulo, _ in contratos]
+    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", nomes_arquivos)
 
-    # Carrega texto bruto
-    arquivos_disponiveis = obter_contratos_disponiveis()
-    _, id_arquivo = next((t, i) for t, i in arquivos_disponiveis if t == titulo_arquivo)
+    if not contrato_selecionado:
+        st.stop()
+
+    titulo_arquivo, id_arquivo = next(item for item in contratos if item[0] == contrato_selecionado)
+
+    st.markdown("### 📄 Visualização do conteúdo do contrato")
     texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
 
-    with st.expander("📄 Texto Extraído do Contrato"):
-        st.text_area("Texto do Contrato", texto, height=400)
+    with st.expander("Visualizar texto completo extraído do contrato"):
+        st.text_area("Conteúdo extraído", texto, height=400)
 
-    if st.button("💬 Extrair Cláusulas com IA"):
-        df_clausulas = extrair_clausulas_robusto(texto)
-        st.session_state.df_clausulas_extraidas = df_clausulas
-        st.success("✅ Cláusulas extraídas com sucesso!")
+    if st.button("🧠 Extrair Cláusulas com IA"):
+        with st.spinner("Executando agente jurídico..."):
+            df_clausulas = extrair_clausulas_robusto(texto)
+            st.session_state["df_clausulas_extraidas"] = df_clausulas
+            st.success("✅ Cláusulas extraídas com sucesso!")
 
     if "df_clausulas_extraidas" in st.session_state:
-        st.markdown("### ✏️ Revise as cláusulas extraídas:")
+        st.markdown("### ✍️ Revisar Cláusulas Extraídas")
         df_editado = st.data_editor(
-            st.session_state.df_clausulas_extraidas,
+            st.session_state["df_clausulas_extraidas"],
             num_rows="dynamic",
             use_container_width=True,
             key="editor_clausulas"
         )
 
+        instituicao = st.text_input("Instituição Financeira")
         if st.button("✅ Validar cláusulas e salvar"):
-            # Atualiza o registro na base de contratos
-            clausulas_txt = "\n".join(df_editado["clausula"].tolist())
-            df_base.loc[df_base["id_contrato"] == id_contrato, "clausulas"] = clausulas_txt
-            salvar_base_contratos(df_base)
-            st.success("📁 Cláusulas salvas com sucesso na base de contratos.")
+            id_contrato = str(uuid.uuid4())
+            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
+            st.success("📦 Cláusulas validadas e salvas com sucesso.")
 
-    
 # =========================
 # Salvar cláusulas extraídas
 # =========================
