@@ -28,6 +28,11 @@ import matplotlib.pyplot as plt
 from docx import Document
 from docx.shared import Pt
 from pandas import Timestamp
+from google.cloud import documentai_v1 as documentai
+from google.oauth2 import service_account
+import openai
+import docx
+import os
 
 st.set_page_config(layout = 'wide')
 
@@ -254,6 +259,123 @@ def aba_upload_contrato(user_email):
 
         st.success("✅ Contrato enviado e registrado com sucesso.")
 
+def obter_contratos_disponiveis():
+    drive = conectar_drive()
+    pasta_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
+    arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
+    return [(arq['title'], arq['id']) for arq in arquivos]
+
+def carregar_texto_contrato(titulo_arquivo, arquivo_id):
+    drive = conectar_drive()
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
+
+    if titulo_arquivo.lower().endswith(".docx"):
+        doc = docx.Document(caminho_temp)
+        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    elif titulo_arquivo.lower().endswith(".pdf"):
+        texto = executar_document_ai(caminho_temp)
+    else:
+        st.error("Formato de arquivo não suportado.")
+        texto = ""
+    return texto
+
+def obter_contratos_disponiveis():
+    drive = conectar_drive()
+    pasta_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
+    arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
+    return [(arq['title'], arq['id']) for arq in arquivos]
+
+def carregar_texto_contrato(titulo_arquivo, arquivo_id):
+    drive = conectar_drive()
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
+
+    if titulo_arquivo.lower().endswith(".docx"):
+        doc = docx.Document(caminho_temp)
+        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    elif titulo_arquivo.lower().endswith(".pdf"):
+        texto = executar_document_ai(caminho_temp)
+    else:
+        st.error("Formato de arquivo não suportado.")
+        texto = ""
+    return texto
+
+def executar_document_ai(caminho_pdf):
+    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
+    project_id = st.secrets["gcp_docai"]["project_id"]
+    location = "us"  # ou "eu"
+    processor_id = st.secrets["gcp_docai"]["processor_id"]
+
+    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
+    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+
+    with open(caminho_pdf, "rb") as f:
+        document = {"content": f.read(), "mime_type": "application/pdf"}
+
+    request = {"name": name, "raw_document": document}
+    result = client.process_document(request=request)
+    return result.document.text
+
+def extrair_clausulas_com_agente(texto):
+    openai.api_key = st.secrets["openai"]["api_key"]
+    prompt = (
+        "Você é um assistente jurídico. Extraia todas as cláusulas do contrato a seguir. "
+        "Numere as cláusulas de forma sequencial (1., 2., 3., etc). "
+        "Não repita o texto completo do contrato, apenas liste as cláusulas identificadas.\n\n"
+        f"Texto do contrato:\n{texto}"
+    )
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+        max_tokens=4000
+    )
+
+    clausulas_raw = response.choices[0].message.content.strip()
+    clausulas = [linha.strip() for linha in clausulas_raw.split("\n") if linha.strip()]
+    df = pd.DataFrame(clausulas, columns=["clausula"])
+    return df
+
+def aba_validacao_clausulas():
+    st.title("🧾 Validação das Cláusulas")
+
+    contratos = obter_contratos_disponiveis()
+    if not contratos:
+        st.warning("Nenhum contrato disponível.")
+        return
+
+    opcoes = [f"{titulo}" for titulo, _ in contratos]
+    contrato_selecionado = st.selectbox("Selecione o contrato:", opcoes)
+    titulo_arquivo, id_arquivo = next(x for x in contratos if x[0] == contrato_selecionado)
+
+    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
+    if not texto:
+        st.stop()
+
+    with st.expander("📄 Visualizar texto extraído do contrato"):
+        st.text_area("Texto do Contrato", texto, height=400)
+
+    if st.button("🧠 Extrair Cláusulas com IA"):
+        df_clausulas = extrair_clausulas_com_agente(texto)
+        st.session_state.df_clausulas_extraidas = df_clausulas
+        st.success("✅ Cláusulas extraídas com sucesso!")
+
+    if "df_clausulas_extraidas" in st.session_state:
+        st.markdown("### ✏️ Revise as cláusulas extraídas:")
+        df_editado = st.data_editor(
+            st.session_state.df_clausulas_extraidas,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_clausulas"
+        )
+
+        instituicao = st.text_input("Instituição Financeira")
+        if st.button("✅ Validar cláusulas e iniciar análise"):
+            id_contrato = str(uuid.uuid4())
+            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
+            
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
@@ -261,7 +383,7 @@ if pagina == "📂 Upload do Contrato":
     aba_upload_contrato(user_email=st.session_state.username)
     
 elif pagina == "🧾 Validação das Cláusulas":
-    st.info("Área de validação das cláusulas extraídas.")
+    aba_validacao_clausulas()
     
 elif pagina == "🔍 Análise Automática":
     st.info("Execução dos agentes financeiros e jurídicos.")
