@@ -75,16 +75,22 @@ pagina = st.sidebar.radio("Ir para:", [
 # -----------------------------
 if pagina == "📂 Upload do Contrato":
     st.info("Área de upload dos contratos.")
+    
 elif pagina == "🧾 Validação das Cláusulas":
     st.info("Área de validação das cláusulas extraídas.")
+    
 elif pagina == "🔍 Análise Automática":
     st.info("Execução dos agentes financeiros e jurídicos.")
+    
 elif pagina == "🧑‍⚖️ Revisão Final":
     st.info("Revisão final das cláusulas com input do usuário.")
+    
 elif pagina == "📊 Índices PRIO":
     st.info("Edição dos indicadores financeiros da PRIO.")
+    
 elif pagina == "📘 Relatórios Gerenciais":
     st.info("Geração de relatórios estratégicos com IA.")
+    
 elif pagina == "📁 Base de Cláusulas Padrão":
     st.info("Cláusulas padrão utilizadas pelos agentes.")
 
