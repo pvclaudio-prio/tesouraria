@@ -1,5 +1,7 @@
 import streamlit as st
 
+st.set_page_config(layout = 'wide')
+
 # -----------------------------
 # Validação Usuários com st.secrets
 # -----------------------------
@@ -57,12 +59,12 @@ if st.sidebar.button("Logout"):
 # -----------------------------
 # Menu de Navegação
 # -----------------------------
-st.sidebar.title("📁 Navegação")
+st.sidebar.title("Navegação")
 pagina = st.sidebar.radio("Ir para:", [
-    "📂 Upload e Extração de Contrato",
-    "🧾 Validação de Cláusulas",
+    "📂 Upload do Contrato",
+    "🧾 Validação das Cláusulas",
     "🔍 Análise Automática",
-    "🧑‍⚖️ Revisão Final (Supervisor & Usuário)",
+    "🧑‍⚖️ Revisão Final",
     "📊 Índices PRIO",
     "📘 Relatórios Gerenciais",
     "📁 Base de Cláusulas Padrão"
@@ -73,18 +75,18 @@ st.markdown(f"### 👤 Usuário: `{nome_usuario}`")
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
-if pagina == "📂 Upload e Extração de Contrato":
-    st.info("Área de upload e parsing de contratos.")
-elif pagina == "🧾 Validação de Cláusulas":
+if pagina == "📂 Upload do Contrato":
+    st.info("Área de upload dos contratos.")
+elif pagina == "🧾 Validação das Cláusulas":
     st.info("Área de validação das cláusulas extraídas.")
 elif pagina == "🔍 Análise Automática":
     st.info("Execução dos agentes financeiros e jurídicos.")
-elif pagina == "🧑‍⚖️ Revisão Final (Supervisor & Usuário)":
+elif pagina == "🧑‍⚖️ Revisão Final":
     st.info("Revisão final das cláusulas com input do usuário.")
 elif pagina == "📊 Índices PRIO":
     st.info("Edição dos indicadores financeiros da PRIO.")
 elif pagina == "📘 Relatórios Gerenciais":
     st.info("Geração de relatórios estratégicos com IA.")
 elif pagina == "📁 Base de Cláusulas Padrão":
-    st.info("CRUD das cláusulas padrão utilizadas pelos agentes.")
+    st.info("Cláusulas padrão utilizadas pelos agentes.")
 
