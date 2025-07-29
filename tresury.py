@@ -140,6 +140,42 @@ def obter_id_pasta(nome_pasta, parent_id=None):
         return resultado[0]['id']
     return None
 
+def salvar_base_contratos(df):
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    # Gera arquivo temporário
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    df.to_excel(caminho_temp, index=False)
+
+    # Atualiza ou cria base principal
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'base_contratos.xlsx' and trashed = false"
+    }).GetList()
+
+    if arquivos:
+        arquivo = arquivos[0]
+    else:
+        arquivo = drive.CreateFile({
+            'title': 'base_contratos.xlsx',
+            'parents': [{'id': pasta_bases_id}]
+        })
+
+    arquivo.SetContentFile(caminho_temp)
+    arquivo.Upload()
+
+    # Cria backup com timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = drive.CreateFile({
+        'title': f'base_contratos__{timestamp}.xlsx',
+        'parents': [{'id': pasta_backups_id}]
+    })
+    backup.SetContentFile(caminho_temp)
+    backup.Upload()
+
+    st.success("✅ Contrato salvo na base e backup criado com sucesso.")
+
 def carregar_base_contratos():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
