@@ -13,14 +13,11 @@ import json
 from oauth2client.client import OAuth2Credentials
 import httplib2
 import traceback
-import openai
-import json
 import httpx
 from sentence_transformers import SentenceTransformer, util
 from openai import OpenAI
 import json
 import requests
-import tempfile
 from difflib import get_close_matches
 import re
 from datetime import timedelta
@@ -32,7 +29,6 @@ from google.cloud import documentai_v1 as documentai
 from google.oauth2 import service_account
 import openai
 import docx
-import os
 import uuid
 
 st.set_page_config(layout = 'wide')
@@ -105,10 +101,9 @@ pagina = st.sidebar.radio("Ir para:", [
     "📁 Base de Cláusulas Padrão"
 ])
 
-# -----------------------------
-# Funções
-# -----------------------------
-
+# =========================
+# Funções de conexão com o Google Drive
+# =========================
 def conectar_drive():
     cred_dict = st.secrets["credentials"]
 
@@ -140,6 +135,9 @@ def obter_id_pasta(nome_pasta, parent_id=None):
         return resultado[0]['id']
     return None
 
+# =========================
+# Base de contratos
+# =========================
 def carregar_base_contratos():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -152,7 +150,10 @@ def carregar_base_contratos():
     }).GetList()
 
     if not arquivos:
-        return pd.DataFrame(columns=["id_contrato", "nome_arquivo", "data_upload", "usuario_upload", "clausulas", "instituicao_financeira"])
+        return pd.DataFrame(columns=[
+            "id_contrato", "nome_arquivo", "data_upload", "usuario_upload",
+            "clausulas", "instituicao_financeira", "tipo", "idioma", "user_email"
+        ])
 
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
     arquivos[0].GetContentFile(caminho_temp)
@@ -189,172 +190,9 @@ def salvar_base_contratos(df):
     backup.SetContentFile(caminho_temp)
     backup.Upload()
 
-def executar_agente_clausulas(texto):
-    prompt = f"""
-    Você é um agente responsável por extrair cláusulas contratuais. Leia atentamente o contrato a seguir:
-
-    -------------------
-    {texto}
-    -------------------
-
-    Extraia e enumere cada cláusula de forma sequencial.
-    Apresente uma lista com a seguinte estrutura:
-
-    1. [Título da cláusula] Texto da cláusula
-    2. [Título da cláusula] Texto da cláusula
-    ...
-
-    Não invente conteúdo. Apenas se baseie no contrato lido.
-    """
-    resposta = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "system", "content": "Você é um assistente jurídico especialista em leitura contratual."},
-                  {"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return resposta.choices[0].message.content.strip()
-
-def carregar_base_prio():
-    drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-    if not pasta_bases_id:
-        st.error("Pasta 'bases' não encontrada.")
-        return pd.DataFrame()
-
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
-    }).GetList()
-
-    if not arquivos:
-        st.warning("Arquivo 'empresa_referencia_PRIO.xlsx' não encontrado.")
-        return pd.DataFrame()
-
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    arquivos[0].GetContentFile(caminho_temp)
-    df = pd.read_excel(caminho_temp)
-    return df
-
-def salvar_base_prio(df):
-    drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
-
-    # Salva temp
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    df.to_excel(caminho_temp, index=False)
-
-    # Atualiza arquivo original
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
-    }).GetList()
-
-    if arquivos:
-        arquivo = arquivos[0]
-    else:
-        arquivo = drive.CreateFile({
-            'title': 'empresa_referencia_PRIO.xlsx',
-            'parents': [{'id': pasta_bases_id}]
-        })
-
-    arquivo.SetContentFile(caminho_temp)
-    arquivo.Upload()
-
-    # Backup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = drive.CreateFile({
-        'title': f'empresa_referencia_PRIO__{timestamp}.xlsx',
-        'parents': [{'id': pasta_backups_id}]
-    })
-    backup.SetContentFile(caminho_temp)
-    backup.Upload()
-
-    st.success("✅ Alterações salvas e backup criado com sucesso.")
-
-def aba_indices_prio():
-    st.title("📊 Índices PRIO - Editar Dados Financeiros")
-
-    df = carregar_base_prio()
-    if df.empty:
-        st.stop()
-
-    st.markdown("Edite os dados abaixo. Você pode adicionar ou excluir linhas:")
-    df_editado = st.data_editor(
-        df,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="editor_prio"
-    )
-
-    if st.button("💾 Salvar alterações"):
-        salvar_base_prio(df_editado)
-
-def aba_upload_contrato(user_email):
-    st.title("📂 Upload do Contrato")
-
-    st.markdown("Faça upload de um contrato em `.pdf` ou `.docx` e preencha os dados abaixo.")
-
-    arquivo = st.file_uploader("Selecione o contrato", type=["pdf", "docx"])
-    instituicao = st.text_input("Instituição Financeira")
-    idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
-
-    if st.button("📤 Enviar Contrato"):
-        if not arquivo or not instituicao:
-            st.warning("Por favor, preencha todos os campos e envie um arquivo.")
-            return
-
-        drive = conectar_drive()
-        pasta_contratos_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
-
-        id_contrato = str(uuid.uuid4())
-        nome_final = f"{id_contrato}_{arquivo.name}"
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{arquivo.name.split('.')[-1]}") as tmp:
-            tmp.write(arquivo.read())
-            caminho_local = tmp.name
-
-        novo_arquivo = drive.CreateFile({
-            'title': nome_final,
-            'parents': [{'id': pasta_contratos_id}]
-        })
-        novo_arquivo.SetContentFile(caminho_local)
-        novo_arquivo.Upload()
-
-        df = carregar_base_contratos()
-        novo = {
-            "id_contrato": id_contrato,
-            "nome_arquivo": nome_final,
-            "tipo": arquivo.name.split(".")[-1],
-            "idioma": idioma,
-            "instituicao_financeira": instituicao,
-            "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "user_email": user_email
-        }
-        df = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
-        salvar_base_contratos(df)
-
-        st.success("✅ Contrato enviado e registrado com sucesso.")
-
-def obter_contratos_disponiveis():
-    drive = conectar_drive()
-    pasta_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
-    arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
-    return [(arq['title'], arq['id']) for arq in arquivos]
-
-def carregar_texto_contrato(titulo_arquivo, arquivo_id):
-    drive = conectar_drive()
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
-
-    if titulo_arquivo.lower().endswith(".docx"):
-        doc = docx.Document(caminho_temp)
-        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-    elif titulo_arquivo.lower().endswith(".pdf"):
-        texto = executar_document_ai(caminho_temp)
-    else:
-        st.error("Formato de arquivo não suportado.")
-        texto = ""
-    return texto
-
+# =========================
+# Manipulação de contratos
+# =========================
 def obter_contratos_disponiveis():
     drive = conectar_drive()
     pasta_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
@@ -379,7 +217,7 @@ def carregar_texto_contrato(titulo_arquivo, arquivo_id):
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
     project_id = st.secrets["gcp_docai"]["project_id"]
-    location = "us"  # ou "eu"
+    location = "us"
     processor_id = st.secrets["gcp_docai"]["processor_id"]
 
     client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
@@ -392,8 +230,14 @@ def executar_document_ai(caminho_pdf):
     result = client.process_document(request=request)
     return result.document.text
 
+# =========================
+# Extração de cláusulas via IA
+# =========================
 def extrair_clausulas_com_agente(texto):
     openai.api_key = st.secrets["openai"]["api_key"]
+    if len(texto) > 10000:
+        texto = texto[:10000]  # Limita para evitar estouro de tokens
+
     prompt = (
         "Você é um assistente jurídico. Extraia todas as cláusulas do contrato a seguir. "
         "Numere as cláusulas de forma sequencial (1., 2., 3., etc). "
@@ -413,71 +257,27 @@ def extrair_clausulas_com_agente(texto):
     df = pd.DataFrame(clausulas, columns=["clausula"])
     return df
 
-def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas")
-
-    contratos = obter_contratos_disponiveis()
-    if not contratos:
-        st.warning("Nenhum contrato disponível.")
-        return
-
-    opcoes = [f"{titulo}" for titulo, _ in contratos]
-    contrato_selecionado = st.selectbox("Selecione o contrato:", opcoes)
-    titulo_arquivo, id_arquivo = next(x for x in contratos if x[0] == contrato_selecionado)
-
-    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
-    if not texto:
-        st.stop()
-
-    with st.expander("📄 Visualizar texto extraído do contrato"):
-        st.text_area("Texto do Contrato", texto, height=400)
-
-    if st.button("🧠 Extrair Cláusulas com IA"):
-        df_clausulas = extrair_clausulas_com_agente(texto)
-        st.session_state.df_clausulas_extraidas = df_clausulas
-        st.success("✅ Cláusulas extraídas com sucesso!")
-
-    if "df_clausulas_extraidas" in st.session_state:
-        st.markdown("### ✏️ Revise as cláusulas extraídas:")
-        df_editado = st.data_editor(
-            st.session_state.df_clausulas_extraidas,
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_clausulas"
-        )
-
-        instituicao = st.text_input("Instituição Financeira")
-        if st.button("✅ Validar cláusulas e iniciar análise"):
-            id_contrato = str(uuid.uuid4())
-            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
-            
-def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas")
-
+# =========================
+# Salvar cláusulas extraídas
+# =========================
+def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_email):
     df = carregar_base_contratos()
-    if df.empty:
-        st.warning("Nenhum contrato disponível.")
-        return
+    clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
+    nova_linha = {
+        "id_contrato": id_contrato,
+        "nome_arquivo": "-",
+        "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "usuario_upload": user_email,
+        "clausulas": clausulas_txt,
+        "instituicao_financeira": instituicao,
+        "tipo": "-",
+        "idioma": "pt",
+        "user_email": user_email
+    }
+    df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+    salvar_base_contratos(df)
 
-    contrato_selecionado = st.selectbox("Selecione um contrato:", options=df["nome_arquivo"].unique())
-    linha = df[df["nome_arquivo"] == contrato_selecionado].iloc[0]
-
-    with st.expander("📄 Ver conteúdo original do contrato"):
-        st.markdown(linha.get("texto_limpo", "Texto ainda não processado."))
-
-    if st.button("🔍 Executar agente de extração de cláusulas"):
-        with st.spinner("Executando modelo GPT-4o..."):
-            clausulas_extraidas = executar_agente_clausulas(linha.get("texto_limpo", ""))
-            st.session_state.clausulas_processadas = clausulas_extraidas
-            st.success("Cláusulas extraídas com sucesso!")
-
-    clausulas_txt = st.session_state.get("clausulas_processadas", "")
-    clausulas_editadas = st.text_area("✏️ Edite ou revise as cláusulas extraídas:", value=clausulas_txt, height=400, key="clausula_editor")
-
-    if st.button("✅ Validar cláusulas e salvar"):
-        df.loc[df["nome_arquivo"] == contrato_selecionado, "clausulas"] = clausulas_editadas
-        salvar_base_contratos(df)
-        st.success("Cláusulas validadas e salvas com sucesso!")
+            
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
