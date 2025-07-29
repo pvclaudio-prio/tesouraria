@@ -283,6 +283,46 @@ def executar_document_ai(caminho_pdf):
 # =========================
 # Extração de cláusulas via IA
 # =========================
+
+def aba_validacao_clausulas():
+    st.title("🧾 Validação das Cláusulas")
+
+    contratos = obter_contratos_disponiveis()
+    if not contratos:
+        st.warning("Nenhum contrato disponível.")
+        return
+
+    opcoes = [f"{titulo}" for titulo, _ in contratos]
+    contrato_selecionado = st.selectbox("Selecione o contrato:", opcoes)
+    titulo_arquivo, id_arquivo = next(x for x in contratos if x[0] == contrato_selecionado)
+
+    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
+    if not texto:
+        st.stop()
+
+    with st.expander("📄 Visualizar texto extraído do contrato"):
+        st.text_area("Texto do Contrato", texto, height=400)
+
+    if st.button("🧠 Extrair Cláusulas com IA"):
+        df_clausulas = extrair_clausulas_com_agente(texto)
+        st.session_state.df_clausulas_extraidas = df_clausulas
+        st.success("✅ Cláusulas extraídas com sucesso!")
+
+    if "df_clausulas_extraidas" in st.session_state:
+        st.markdown("### ✏️ Revise as cláusulas extraídas:")
+        df_editado = st.data_editor(
+            st.session_state.df_clausulas_extraidas,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_clausulas"
+        )
+
+        instituicao = st.text_input("Instituição Financeira")
+        if st.button("✅ Validar cláusulas e iniciar análise"):
+            id_contrato = str(uuid.uuid4())
+            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
+            st.success("✅ Cláusulas salvas com sucesso!")
+
 def extrair_clausulas_com_agente(texto):
     openai.api_key = st.secrets["openai"]["api_key"]
     if len(texto) > 10000:
