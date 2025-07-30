@@ -518,11 +518,11 @@ def carregar_clausulas_validadas():
 
 def aba_analise_automatica():
     st.title("🧠 Análise Automática das Cláusulas")
+    df = carregar_base_contratos()
     contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
     contrato_escolhido = st.selectbox("Selecione o contrato:", contratos_disponiveis)
     if st.button("Iniciar Análise Automática"):
         # Carregar cláusulas validadas
-        df = carregar_base_contratos()
         if df.empty or "clausulas" not in df.columns:
             st.warning("Não há cláusulas validadas disponíveis.")
             return
