@@ -368,10 +368,9 @@ def aba_validacao_clausulas():
         st.text_area("Conteúdo extraído", texto, height=400)
 
     if st.button("🧠 Extrair Cláusulas com IA"):
-        with st.spinner("Executando agente jurídico..."):
-            df_clausulas = extrair_clausulas_robusto(texto)
-            st.session_state["df_clausulas_extraidas"] = df_clausulas
-            st.success("✅ Cláusulas extraídas com sucesso!")
+        df_clausulas = extrair_clausulas_robusto(texto)
+        st.session_state["df_clausulas_extraidas"] = df_clausulas
+        st.success("✅ Cláusulas extraídas com sucesso!")
 
     if "df_clausulas_extraidas" in st.session_state:
         st.markdown("### ✍️ Revisar Cláusulas Extraídas")
