@@ -580,7 +580,9 @@ def aba_analise_automatica():
     
     {texto_indices}
     
-    Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Justifique com base nos dados da empresa.
+    Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão.
+    Caso a cláusula não aborde nenhuma condicionante financeira, de o seu de acordo e no motivo seja objetivo em dizer que não é aplicável.
+    Justifique com base nos dados da empresa.
     
     Cláusula:
     \"\"\"{clausula}\"\"\"
