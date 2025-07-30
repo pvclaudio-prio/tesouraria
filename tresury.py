@@ -474,32 +474,33 @@ def extrair_clausulas_robusto(texto):
 # =========================
 def salvar_clausulas_validadas(df_clausulas, nome_arquivo, instituicao, user_email):
     df = carregar_base_contratos()
+
+    # Garante que a cláusula é string e junta tudo em um único campo
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
     clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
 
-    # Localizar linha correta
+    # Atualiza a linha correspondente ao contrato
     idx = df[df["nome_arquivo"] == nome_arquivo].index
     if not idx.empty:
-        i = idx[0]
-        df.at[i, "clausulas"] = clausulas_txt
-        df.at[i, "instituicao_financeira"] = instituicao
-        df.at[i, "user_email"] = user_email
-        df.at[i, "usuario_upload"] = user_email
-        df.at[i, "data_upload"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        df.at[idx[0], "clausulas"] = clausulas_txt
+        df.at[idx[0], "instituicao_financeira"] = instituicao
+        df.at[idx[0], "user_email"] = user_email
+        df.at[idx[0], "usuario_upload"] = user_email
+        df.at[idx[0], "data_upload"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     else:
-        # fallback caso não encontre (não deveria acontecer)
-        novo = {
+        # fallback: adiciona nova linha (evita perder dados se não encontrar)
+        nova_linha = {
             "id_contrato": str(uuid.uuid4()),
             "nome_arquivo": nome_arquivo,
+            "tipo": "-",
+            "idioma": "pt",
+            "instituicao_financeira": instituicao,
             "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "usuario_upload": user_email,
             "clausulas": clausulas_txt,
-            "instituicao_financeira": instituicao,
-            "tipo": "-",
-            "idioma": "pt",
             "user_email": user_email
         }
-        df = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
+        df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
 
     salvar_base_contratos(df)
 
