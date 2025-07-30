@@ -193,7 +193,7 @@ def aba_upload_contrato(user_email):
 
         st.success("✅ Contrato enviado e registrado com sucesso.")
 
-ddef carregar_base_contratos():
+def carregar_base_contratos():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     if not pasta_bases_id:
