@@ -33,6 +33,7 @@ import uuid
 import openpyxl
 import time
 from docx2pdf import convert
+from google.cloud import documentai_v1beta3 as documentai
 
 st.set_page_config(layout = 'wide')
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -264,14 +265,21 @@ def extrair_com_document_ai(caminho_pdf):
     processor_id = st.secrets["gcp_docai"]["processor_id"]
     location = "us"
 
-    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+    client = documentai.DocumentProcessorServiceClient(credentials=credentials)
+    name = client.processor_path(project=project_id, location=location, processor=processor_id)
 
     with open(caminho_pdf, "rb") as f:
         document = {"content": f.read(), "mime_type": "application/pdf"}
 
-    request = {"name": name, "raw_document": document}
+    request = documentai.ProcessRequest(
+    name=name,
+    raw_document=documentai.RawDocument(
+        content=document["content"],
+        mime_type=document["mime_type"]
+    )
+)
     result = client.process_document(request=request)
+
     return result.document.text
 
 def executar_document_ai(caminho_pdf):
