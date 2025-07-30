@@ -515,7 +515,7 @@ def aba_analise_automatica():
 
     df_filtrado = df_clausulas[df_clausulas["id_contrato"] == contrato_selecionado].copy()
     st.markdown("### 📄 Cláusulas do contrato selecionado:")
-    st.dataframe(df_filtrado[["clausula_id", "clausula"]], use_container_width=True)
+    st.dataframe(df_filtrado[["clausula"]], use_container_width=True)
 
     if st.button("🔍 Analisar Cláusulas com IA"):
         st.warning("🔧 Em breve: integração com agentes jurídico, financeiro e supervisor para análise automatizada.")
