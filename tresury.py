@@ -361,6 +361,9 @@ def aba_validacao_clausulas():
 
     titulo_arquivo, id_arquivo = next(item for item in contratos if item[0] == contrato_selecionado)
 
+    # Extrai id_contrato do nome do arquivo (antes do primeiro "_")
+    id_contrato = titulo_arquivo.split("_")[0]
+
     st.markdown("### 📄 Visualização do conteúdo do contrato")
     texto = carregar_texto_contrato_drive(titulo_arquivo, id_arquivo)
 
@@ -382,8 +385,11 @@ def aba_validacao_clausulas():
         )
 
         if st.button("✅ Validar cláusulas e salvar"):
-            salvar_clausulas_validadas(df_editado, contrato_selecionado, st.session_state.username)
-            st.success("📦 Cláusulas validadas e salvas com sucesso.")
+            sucesso = salvar_clausulas_validadas(df_editado, id_contrato)
+            if sucesso:
+                st.success("📦 Cláusulas validadas e salvas com sucesso.")
+            else:
+                st.error("❌ Contrato não encontrado na base para atualização.")
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
     paragrafos = texto.split("\n\n")
@@ -471,24 +477,24 @@ def extrair_clausulas_robusto(texto):
 # =========================
 # Salvar cláusulas extraídas
 # =========================
-def salvar_clausulas_validadas(df_clausulas, contrato_nome_arquivo, user_email):
+def salvar_clausulas_validadas(df_clausulas, id_contrato):
     df = carregar_base_contratos()
+    if df.empty:
+        return False
 
-    # Extrair cláusulas em texto
+    # Garante que cláusulas estejam como string
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
     clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
 
-    # Atualizar a linha correspondente ao contrato selecionado
-    if contrato_nome_arquivo not in df["nome_arquivo"].values:
-        st.error("Contrato não encontrado na base para atualização.")
-        return
+    # Verifica se o contrato existe
+    idx = df[df["id_contrato"] == id_contrato].index
+    if len(idx) == 0:
+        return False
 
-    idx = df[df["nome_arquivo"] == contrato_nome_arquivo].index[0]
-    df.at[idx, "clausulas"] = clausulas_txt
-    df.at[idx, "user_email"] = user_email
-
+    # Atualiza a cláusula na linha existente
+    df.loc[idx[0], "clausulas"] = clausulas_txt
     salvar_base_contratos(df)
-
+    return True
 # =========================
 # 📌 Aba: Análise Automática das Cláusulas
 # =========================
