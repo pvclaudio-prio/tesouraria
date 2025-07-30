@@ -34,6 +34,7 @@ import openpyxl
 import time
 from docx2pdf import convert
 from google.cloud import documentai_v1beta3 as documentai
+from PyPDF2 import PdfReader, PdfWriter
 
 st.set_page_config(layout = 'wide')
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -259,28 +260,36 @@ def docx_para_pdf_temporario(caminho_docx):
     convert(caminho_docx, caminho_pdf)
     return caminho_pdf
 
-def extrair_com_document_ai(caminho_pdf):
+def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
+    from google.cloud import documentai_v1 as documentai
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
     project_id = st.secrets["gcp_docai"]["project_id"]
     processor_id = st.secrets["gcp_docai"]["processor_id"]
     location = "us"
 
     client = documentai.DocumentProcessorServiceClient(credentials=credentials)
-    name = client.processor_path(project=project_id, location=location, processor=processor_id)
+    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
-    with open(caminho_pdf, "rb") as f:
-        document = {"content": f.read(), "mime_type": "application/pdf"}
+    leitor = PdfReader(caminho_pdf)
+    total_paginas = len(leitor.pages)
+    texto_total = ""
 
-    request = documentai.ProcessRequest(
-    name=name,
-    raw_document=documentai.RawDocument(
-        content=document["content"],
-        mime_type=document["mime_type"]
-    )
-)
-    result = client.process_document(request=request)
+    for i in range(0, total_paginas, max_paginas):
+        escritor = PdfWriter()
+        for j in range(i, min(i + max_paginas, total_paginas)):
+            escritor.add_page(leitor.pages[j])
 
-    return result.document.text
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            escritor.write(temp_pdf)
+            temp_pdf.flush()
+            with open(temp_pdf.name, "rb") as f:
+                document = {"content": f.read(), "mime_type": "application/pdf"}
+
+        request = {"name": name, "raw_document": document}
+        result = client.process_document(request=request)
+        texto_total += result.document.text + "\n"
+
+    return texto_total.strip()
 
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
@@ -313,10 +322,10 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
     try:
         if titulo_arquivo.lower().endswith(".docx"):
             caminho_pdf = docx_para_pdf_temporario(caminho_temp)
-            texto = extrair_com_document_ai(caminho_pdf)
+            texto = extrair_com_document_ai_paginas(caminho_pdf)
             os.remove(caminho_pdf)  # limpa PDF temporário
         elif titulo_arquivo.lower().endswith(".pdf"):
-            texto = extrair_com_document_ai(caminho_temp)
+            texto = extrair_com_document_ai_paginas(caminho_temp)
         else:
             st.error("❌ Formato de arquivo não suportado. Use .docx ou .pdf.")
             return ""
