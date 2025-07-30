@@ -151,11 +151,12 @@ def aba_upload_contrato(user_email):
     st.markdown("Faça upload de um contrato em `.pdf` ou `.docx` e preencha os dados abaixo.")
 
     arquivo = st.file_uploader("Selecione o contrato", type=["pdf", "docx"])
+    nome_amigavel = st.text_input("Nome do contrato para exibição futura (ex: FAB PRIO - Empréstimo 2025)")
     instituicao = st.text_input("Instituição Financeira")
     idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
 
     if st.button("📤 Enviar Contrato"):
-        if not arquivo or not instituicao:
+        if not arquivo or not nome_amigavel or not instituicao:
             st.warning("Por favor, preencha todos os campos e envie um arquivo.")
             return
 
@@ -163,23 +164,26 @@ def aba_upload_contrato(user_email):
         pasta_contratos_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
 
         id_contrato = str(uuid.uuid4())
-        nome_final = f"{id_contrato}_{arquivo.name}"
+        nome_arquivo_drive = f"{id_contrato}_{arquivo.name}"
 
+        # Salvar temporariamente
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{arquivo.name.split('.')[-1]}") as tmp:
             tmp.write(arquivo.read())
             caminho_local = tmp.name
 
+        # Upload para o Drive
         novo_arquivo = drive.CreateFile({
-            'title': nome_final,
+            'title': nome_arquivo_drive,
             'parents': [{'id': pasta_contratos_id}]
         })
         novo_arquivo.SetContentFile(caminho_local)
         novo_arquivo.Upload()
 
+        # Atualizar base
         df = carregar_base_contratos()
         novo = {
             "id_contrato": id_contrato,
-            "nome_arquivo": nome_final,
+            "nome_arquivo": nome_amigavel,  # <- Nome amigável será usado como referência
             "tipo": arquivo.name.split(".")[-1],
             "idioma": idioma,
             "instituicao_financeira": instituicao,
@@ -341,7 +345,6 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
 
     return texto
 
-
 def aba_validacao_clausulas():
     st.title("🧾 Validação das Cláusulas Contratuais")
 
@@ -381,8 +384,7 @@ def aba_validacao_clausulas():
 
         instituicao = st.text_input("Instituição Financeira")
         if st.button("✅ Validar cláusulas e salvar"):
-            id_contrato = str(uuid.uuid4())
-            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
+            salvar_clausulas_validadas(df_editado, contrato_selecionado, instituicao, st.session_state.username)
             st.success("📦 Cláusulas validadas e salvas com sucesso.")
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
@@ -471,26 +473,35 @@ def extrair_clausulas_robusto(texto):
 # =========================
 # Salvar cláusulas extraídas
 # =========================
-def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_email):
+def salvar_clausulas_validadas(df_clausulas, nome_arquivo, instituicao, user_email):
     df = carregar_base_contratos()
-
-    # Garantir que a coluna "clausula" seja string antes de join
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
     clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
 
-    nova_linha = {
-        "id_contrato": id_contrato,
-        "nome_arquivo": "-",
-        "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "usuario_upload": user_email,
-        "clausulas": clausulas_txt,
-        "instituicao_financeira": instituicao,
-        "tipo": "-",
-        "idioma": "pt",
-        "user_email": user_email
-    }
+    # Localizar linha correta
+    idx = df[df["nome_arquivo"] == nome_arquivo].index
+    if not idx.empty:
+        i = idx[0]
+        df.at[i, "clausulas"] = clausulas_txt
+        df.at[i, "instituicao_financeira"] = instituicao
+        df.at[i, "user_email"] = user_email
+        df.at[i, "usuario_upload"] = user_email
+        df.at[i, "data_upload"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        # fallback caso não encontre (não deveria acontecer)
+        novo = {
+            "id_contrato": str(uuid.uuid4()),
+            "nome_arquivo": nome_arquivo,
+            "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "usuario_upload": user_email,
+            "clausulas": clausulas_txt,
+            "instituicao_financeira": instituicao,
+            "tipo": "-",
+            "idioma": "pt",
+            "user_email": user_email
+        }
+        df = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
 
-    df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
     salvar_base_contratos(df)
 
 # =========================
