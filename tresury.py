@@ -519,7 +519,151 @@ def aba_analise_automatica():
 
     if st.button("🔍 Analisar Cláusulas com IA"):
         st.warning("🔧 Em breve: integração com agentes jurídico, financeiro e supervisor para análise automatizada.")
+def rodar_agente_juridico(df_clausulas, nome_arquivo):
+    st.info(f"Executando análise jurídica para o contrato: {nome_arquivo}")
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    
+    df_filtrado = df_clausulas[df_clausulas["nome_arquivo"] == nome_arquivo].reset_index(drop=True)
+    resultados = []
 
+    for i, row in df_filtrado.iterrows():
+        with st.spinner(f"Analisando cláusula {i+1}/{len(df_filtrado)}..."):
+            prompt = f"""
+Você é um advogado especialista em contratos financeiros internacionais.
+
+Analise a cláusula abaixo e classifique-a como "Conforme" ou "Necessita Revisão". 
+Se classificar como "Necessita Revisão", explique brevemente o motivo jurídico.
+
+Cláusula:
+"""
+{row['clausula']}
+"""
+
+Responda no seguinte formato:
+Classificacao: <Conforme ou Necessita Revisao>
+Motivo: <Justificativa breve>
+"""
+            
+            try:
+                resposta = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Você é um advogado especialista em contratos financeiros internacionais."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0,
+                    max_tokens=1024
+                )
+
+                conteudo = resposta.choices[0].message.content.strip()
+
+                match_classificacao = re.search(r"Classificacao:\s*(.*)", conteudo, re.IGNORECASE)
+                match_motivo = re.search(r"Motivo:\s*(.*)", conteudo, re.IGNORECASE)
+
+                classificacao = match_classificacao.group(1).strip() if match_classificacao else "Erro"
+                motivo = match_motivo.group(1).strip() if match_motivo else "Não foi possível extrair o motivo."
+            
+            except Exception as e:
+                classificacao = "Erro"
+                motivo = str(e)
+
+            resultados.append({
+                "nome_arquivo": row["nome_arquivo"],
+                "clausula": row["clausula"],
+                "classificacao_juridico": classificacao,
+                "motivo_juridico": motivo
+            })
+
+    df_resultado = pd.DataFrame(resultados)
+    return df_resultado
+
+def executar_agente_financeiro(df_clausulas):
+    st.info("🔎 Iniciando análise financeira das cláusulas...")
+
+    # Carregar índices da PRIO
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.error("❌ Base financeira 'empresa_referencia_PRIO.xlsx' não encontrada.")
+        return df_clausulas
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    df_indices = pd.read_excel(caminho_temp)
+
+    # Normalizar os dados financeiros em texto para análise
+    indices_textuais = "\n".join([
+        f"EBITDA: {df_indices['EBITDA'][0]}",
+        f"Mrg EBITDA: {df_indices['Mrg EBITDA'][0]}",
+        f"Res Fin: {df_indices['Res Fin'][0]}",
+        f"Dívida: {df_indices['Dívida'][0]}",
+        f"Lucro Líq: {df_indices['Lucro Líq'][0]}",
+        f"Caixa: {df_indices['Caixa'][0]}"
+    ])
+
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    resultados = []
+
+    for i, linha in df_clausulas.iterrows():
+        clausula = linha["clausula"]
+
+        prompt = f"""
+Você é um analista financeiro especializado em contratos de crédito.
+
+Analise a cláusula abaixo com base nos seguintes indicadores financeiros da empresa PRIO:
+{indices_textuais}
+
+Cláusula:
+"""
+{clausula}
+"""
+
+Classifique a cláusula como:
+- Conforme
+- Necessita Revisão
+
+E forneça uma justificativa financeira clara para sua classificação.
+
+Responda no formato:
+Classificacao: <Conforme ou Necessita Revisão>
+Motivo: <texto explicativo>
+"""
+
+        with st.spinner(f"💰 Analisando cláusula financeira {i+1}/{len(df_clausulas)}..."):
+            try:
+                resposta = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "Você é um assistente financeiro com foco em contratos."},
+                        {"role": "user", "content": prompt.strip()}
+                    ],
+                    temperature=0,
+                    max_tokens=800
+                )
+                conteudo = resposta.choices[0].message.content.strip()
+
+                match_class = re.search(r"Classificacao:\s*(.*)", conteudo, re.IGNORECASE)
+                match_motivo = re.search(r"Motivo:\s*(.*)", conteudo, re.IGNORECASE)
+
+                classificacao = match_class.group(1).strip() if match_class else "Erro"
+                motivo = match_motivo.group(1).strip() if match_motivo else conteudo
+
+            except Exception as e:
+                classificacao = "Erro"
+                motivo = str(e)
+
+            resultados.append({
+                "nome_arquivo": linha["nome_arquivo"],
+                "clausula": clausula,
+                "revisao_financeiro": classificacao,
+                "motivo_financeiro": motivo
+            })
+
+    return pd.DataFrame(resultados)
 
 # -----------------------------
 # Renderização de conteúdo por página
