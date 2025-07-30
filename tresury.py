@@ -413,30 +413,28 @@ def gerar_prompt_com_exemplos(texto_chunk):
     exemplos = """
 Exemplos de cláusulas extraídas corretamente:
 
-1. Definitions
 This Agreement, including its schedules and annexes, shall be interpreted according to the following definitions: “Borrower” refers to PRIO S.A., “Facility” means the total loan commitment...
 
-2. Interest Rate
 The applicable interest rate shall be determined as the sum of the Margin (3.5%) and the Base Rate (SOFR), revised quarterly in accordance with market conditions.
 
-3. Repayment Terms
 The Borrower agrees to repay the Facility in 8 equal semi-annual installments beginning 6 months after the disbursement date.
 
-4. Events of Default
 The following shall constitute an Event of Default: (a) failure to pay any amount due; (b) breach of any covenant...
 
-5. Governing Law
 This Agreement shall be governed by and construed in accordance with the laws of England and Wales.
 """
 
     prompt = f"""
 Você é um advogado especializado em contratos de crédito internacional.
 
-Extraia todas as cláusulas do texto a seguir. Cada cláusula deve conter:
+Extraia todas as cláusulas do texto a seguir. Cada cláusula deve conter apenas:
+
+- Texto completo da cláusula
+
+Não inclua o seguinte:
 
 - Numeração (1., 2., 3.1, etc.)
 - Título da cláusula (se houver)
-- Texto completo da cláusula
 
 Não inclua resumos nem comentários. Apresente a lista como nos exemplos abaixo.
 
@@ -561,7 +559,9 @@ def aba_analise_automatica():
     
                 # 🔹 Agente Jurídico
                 prompt_juridico = f"""
-    Você é um advogado especialista em contratos de dívida. Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Justifique de forma objetiva com base jurídica.
+    Você é um advogado especialista em contratos de dívida.
+    Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+    Justifique de forma objetiva com base jurídica.
     
     Cláusula:
     \"\"\"{clausula}\"\"\"
@@ -580,8 +580,9 @@ def aba_analise_automatica():
     
     {texto_indices}
     
-    Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão.
-    Caso a cláusula não aborde nenhuma condicionante financeira, de o seu de acordo e no motivo seja objetivo em dizer que não é aplicável.
+    Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+    Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
+    índices financeiros para análise.
     Justifique com base nos dados da empresa.
     
     Cláusula:
