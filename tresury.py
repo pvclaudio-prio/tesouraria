@@ -634,6 +634,59 @@ Análise Financeira:
         df_resultado.to_excel(writer, index=False)
     st.download_button("📥 Baixar resultado em Excel", data=buffer.getvalue(), file_name="analise_clausulas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+def aba_revisao_final():
+    st.title("👨‍⚖️ Revisão do Supervisor - Cláusulas Contratuais")
+
+    df = carregar_clausulas_analisadas()
+    if df.empty:
+        st.warning("Nenhuma cláusula analisada encontrada.")
+        return
+
+    contratos_disponiveis = df["nome_arquivo"].unique().tolist()
+    contrato = st.selectbox("Selecione o contrato para revisar:", contratos_disponiveis)
+
+    df_filtrado = df[df["nome_arquivo"] == contrato].copy()
+
+    st.markdown("### 🔍 Análises Anteriores dos Agentes")
+    st.dataframe(
+        df_filtrado[[
+            "clausula", 
+            "juridico_revisao", "motivo_juridico",
+            "financeiro_revisao", "motivo_financeiro"
+        ]], use_container_width=True
+    )
+
+    st.markdown("### 📝 Revisão do Supervisor")
+    
+    # Inicializar colunas de revisão se não existirem
+    for col in [
+        "supervisor_revisao_juridico", "motivo_supervisor_juridico",
+        "supervisor_revisao_financeiro", "motivo_supervisor_financeiro"
+    ]:
+        if col not in df_filtrado.columns:
+            df_filtrado[col] = ""
+
+    df_editado = st.data_editor(
+        df_filtrado,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_order=[
+            "clausula",
+            "juridico_revisao", "motivo_juridico",
+            "supervisor_revisao_juridico", "motivo_supervisor_juridico",
+            "financeiro_revisao", "motivo_financeiro",
+            "supervisor_revisao_financeiro", "motivo_supervisor_financeiro"
+        ],
+        disabled=[
+            "nome_arquivo", "clausula", "juridico_revisao", "motivo_juridico",
+            "financeiro_revisao", "motivo_financeiro"
+        ],
+        key="revisao_supervisor_editor"
+    )
+
+    if st.button("✅ Salvar revisão do supervisor"):
+        salvar_clausulas_revisadas(df_editado)
+        st.success("Revisão do supervisor salva com sucesso!")
 
 
 
@@ -650,7 +703,7 @@ elif pagina == "🔍 Análise Automática":
     aba_analise_automatica()
     
 elif pagina == "🧑‍⚖️ Revisão Final":
-    st.info("Revisão final das cláusulas com input do usuário.")
+    aba_revisao_final()
     
 elif pagina == "📊 Índices PRIO":
     aba_indices_prio()
