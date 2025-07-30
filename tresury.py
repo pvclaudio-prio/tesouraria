@@ -644,60 +644,58 @@ def aba_analise_automatica():
         st.download_button("📥 Baixar resultado em Excel", data=buffer.getvalue(), file_name="analise_clausulas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 def aba_revisao_final():
-    st.title("👨‍⚖️ Revisão do Supervisor - Cláusulas Contratuais")
+    st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
 
     df = carregar_clausulas_analisadas()
     if df.empty:
-        st.warning("Nenhuma cláusula analisada encontrada.")
+        st.warning("Nenhuma cláusula analisada disponível.")
         return
 
     contratos_disponiveis = df["nome_arquivo"].unique().tolist()
-    contrato = st.selectbox("Selecione o contrato para revisar:", contratos_disponiveis)
+    contrato = st.selectbox("Selecione o contrato:", contratos_disponiveis)
 
     df_filtrado = df[df["nome_arquivo"] == contrato].copy()
 
-    st.markdown("### 🔍 Análises Anteriores dos Agentes")
+    st.markdown("### 🔍 Análise dos Agentes")
     st.dataframe(
         df_filtrado[[
-            "clausula", 
-            "juridico_revisao", "motivo_juridico",
-            "financeiro_revisao", "motivo_financeiro"
+            "clausula",
+            "revisao_juridico", "motivo_juridico",
+            "revisao_financeiro", "motivo_financeiro",
+            "revisao_sup", "motivo_sup"
         ]], use_container_width=True
     )
 
-    st.markdown("### 📝 Revisão do Supervisor")
-    
-    # Inicializar colunas de revisão se não existirem
-    for col in [
-        "supervisor_revisao_juridico", "motivo_supervisor_juridico",
-        "supervisor_revisao_financeiro", "motivo_supervisor_financeiro"
-    ]:
+    st.markdown("### 📝 Revisão Final do Usuário")
+
+    # Inicializar colunas editáveis, se necessário
+    for col in ["user_revisao", "motivo_user"]:
         if col not in df_filtrado.columns:
             df_filtrado[col] = ""
 
     df_editado = st.data_editor(
         df_filtrado,
-        num_rows="dynamic",
         use_container_width=True,
+        num_rows="dynamic",
         column_order=[
             "clausula",
-            "juridico_revisao", "motivo_juridico",
-            "supervisor_revisao_juridico", "motivo_supervisor_juridico",
-            "financeiro_revisao", "motivo_financeiro",
-            "supervisor_revisao_financeiro", "motivo_supervisor_financeiro"
+            "revisao_juridico", "motivo_juridico",
+            "revisao_financeiro", "motivo_financeiro",
+            "revisao_sup", "motivo_sup",
+            "user_revisao", "motivo_user"
         ],
         disabled=[
-            "nome_arquivo", "clausula", "juridico_revisao", "motivo_juridico",
-            "financeiro_revisao", "motivo_financeiro"
+            "nome_arquivo", "clausula",
+            "revisao_juridico", "motivo_juridico",
+            "revisao_financeiro", "motivo_financeiro",
+            "revisao_sup", "motivo_sup"
         ],
-        key="revisao_supervisor_editor"
+        key="revisao_final_editor"
     )
 
-    st.markdown("### 💾 Salvar Revisão Final")
-    
-    if st.button("✅ Salvar revisão do supervisor"):
-        salvar_clausulas_revisadas(df_editado)
-        st.success("Revisão do supervisor salva com sucesso!")
+    if st.button("✅ Salvar revisão final do usuário"):
+        salvar_clausulas_validadas_usuario(df_editado)
+        st.success("✅ Revisão final do usuário salva com sucesso!")
 
 def carregar_clausulas_analisadas():
     drive = conectar_drive()
@@ -721,44 +719,38 @@ def carregar_clausulas_analisadas():
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
     
-def salvar_clausulas_revisadas(df_revisado):
+def salvar_clausulas_validadas_usuario(df):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
 
-    nome_arquivo_principal = "clausulas_analisadas.xlsx"
-
-    # Caminho temporário
+    nome_arquivo = "clausulas_validadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    df_revisado.to_excel(caminho_temp, index=False)
+    df.to_excel(caminho_temp, index=False)
 
-    # Verifica se já existe o arquivo principal
     arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo_principal}' and trashed = false"
+        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
 
     if arquivos:
-        arquivo_principal = arquivos[0]
+        arquivo = arquivos[0]
     else:
-        arquivo_principal = drive.CreateFile({
-            'title': nome_arquivo_principal,
+        arquivo = drive.CreateFile({
+            'title': nome_arquivo,
             'parents': [{'id': pasta_bases_id}]
         })
 
-    # Atualiza base principal
-    arquivo_principal.SetContentFile(caminho_temp)
-    arquivo_principal.Upload()
+    arquivo.SetContentFile(caminho_temp)
+    arquivo.Upload()
 
-    # Cria backup com timestamp
+    # Backup
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_backup = f"clausulas_analisadas__{timestamp}.xlsx"
     backup = drive.CreateFile({
-        'title': nome_backup,
+        'title': f'clausulas_validadas__{timestamp}.xlsx',
         'parents': [{'id': pasta_backups_id}]
     })
     backup.SetContentFile(caminho_temp)
     backup.Upload()
-
 
 # -----------------------------
 # Renderização de conteúdo por página
