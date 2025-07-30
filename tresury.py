@@ -684,10 +684,71 @@ def aba_revisao_final():
         key="revisao_supervisor_editor"
     )
 
+    st.markdown("### 💾 Salvar Revisão Final")
+    
     if st.button("✅ Salvar revisão do supervisor"):
         salvar_clausulas_revisadas(df_editado)
         st.success("Revisão do supervisor salva com sucesso!")
 
+def carregar_clausulas_analisadas():
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_analisadas.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("❌ Base de cláusulas analisadas não encontrada.")
+        return pd.DataFrame(columns=[
+            "nome_arquivo", "clausula",
+            "analise_juridico_status", "analise_juridico_motivo",
+            "analise_financeiro_status", "analise_financeiro_motivo",
+            "revisao_juridico_status", "revisao_juridico_motivo",
+            "revisao_financeiro_status", "revisao_financeiro_motivo"
+        ])
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    return pd.read_excel(caminho_temp)
+    
+def salvar_clausulas_revisadas(df_revisado):
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    nome_arquivo_principal = "clausulas_analisadas.xlsx"
+
+    # Caminho temporário
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    df_revisado.to_excel(caminho_temp, index=False)
+
+    # Verifica se já existe o arquivo principal
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo_principal}' and trashed = false"
+    }).GetList()
+
+    if arquivos:
+        arquivo_principal = arquivos[0]
+    else:
+        arquivo_principal = drive.CreateFile({
+            'title': nome_arquivo_principal,
+            'parents': [{'id': pasta_bases_id}]
+        })
+
+    # Atualiza base principal
+    arquivo_principal.SetContentFile(caminho_temp)
+    arquivo_principal.Upload()
+
+    # Cria backup com timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_backup = f"clausulas_analisadas__{timestamp}.xlsx"
+    backup = drive.CreateFile({
+        'title': nome_backup,
+        'parents': [{'id': pasta_backups_id}]
+    })
+    backup.SetContentFile(caminho_temp)
+    backup.Upload()
 
 
 # -----------------------------
