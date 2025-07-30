@@ -381,9 +381,8 @@ def aba_validacao_clausulas():
             key="editor_clausulas"
         )
 
-        instituicao = st.text_input("Instituição Financeira")
         if st.button("✅ Validar cláusulas e salvar"):
-            salvar_clausulas_validadas(df_editado, contrato_selecionado, instituicao, st.session_state.username)
+            salvar_clausulas_validadas(df_editado, contrato_selecionado, st.session_state.username)
             st.success("📦 Cláusulas validadas e salvas com sucesso.")
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
@@ -472,35 +471,21 @@ def extrair_clausulas_robusto(texto):
 # =========================
 # Salvar cláusulas extraídas
 # =========================
-def salvar_clausulas_validadas(df_clausulas, nome_arquivo, instituicao, user_email):
+def salvar_clausulas_validadas(df_clausulas, contrato_nome_arquivo, user_email):
     df = carregar_base_contratos()
 
-    # Garante que a cláusula é string e junta tudo em um único campo
+    # Extrair cláusulas em texto
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
     clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
 
-    # Atualiza a linha correspondente ao contrato
-    idx = df[df["nome_arquivo"] == nome_arquivo].index
-    if not idx.empty:
-        df.at[idx[0], "clausulas"] = clausulas_txt
-        df.at[idx[0], "instituicao_financeira"] = instituicao
-        df.at[idx[0], "user_email"] = user_email
-        df.at[idx[0], "usuario_upload"] = user_email
-        df.at[idx[0], "data_upload"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        # fallback: adiciona nova linha (evita perder dados se não encontrar)
-        nova_linha = {
-            "id_contrato": str(uuid.uuid4()),
-            "nome_arquivo": nome_arquivo,
-            "tipo": "-",
-            "idioma": "pt",
-            "instituicao_financeira": instituicao,
-            "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "usuario_upload": user_email,
-            "clausulas": clausulas_txt,
-            "user_email": user_email
-        }
-        df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+    # Atualizar a linha correspondente ao contrato selecionado
+    if contrato_nome_arquivo not in df["nome_arquivo"].values:
+        st.error("Contrato não encontrado na base para atualização.")
+        return
+
+    idx = df[df["nome_arquivo"] == contrato_nome_arquivo].index[0]
+    df.at[idx, "clausulas"] = clausulas_txt
+    df.at[idx, "user_email"] = user_email
 
     salvar_base_contratos(df)
 
