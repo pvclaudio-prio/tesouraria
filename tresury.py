@@ -354,7 +354,9 @@ def aba_validacao_clausulas():
         return
 
     nomes_arquivos = [titulo for titulo, _ in contratos]
-    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", nomes_arquivos)
+    df = carregar_base_contratos()
+    contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
+    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", contratos_disponiveis)
 
     if not contrato_selecionado:
         st.stop()
