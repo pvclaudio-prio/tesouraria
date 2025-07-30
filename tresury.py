@@ -561,6 +561,7 @@ def aba_analise_automatica():
                 prompt_juridico = f"""
     Você é um advogado especialista em contratos de dívida.
     Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+    Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
     Justifique de forma objetiva com base jurídica.
     
     Cláusula:
@@ -581,6 +582,7 @@ def aba_analise_automatica():
     {texto_indices}
     
     Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+    Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
     Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
     índices financeiros para análise.
     Justifique com base nos dados da empresa.
@@ -597,7 +599,10 @@ def aba_analise_automatica():
     
                 # 🔹 Agente Supervisor
                 prompt_supervisor = f"""
-    Você é o supervisor responsável pela revisão final. Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente.
+    Você é o supervisor responsável pela revisão final. 
+    Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
+    Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente.
+    Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
     
     Cláusula:
     \"\"\"{clausula}\"\"\"
