@@ -761,7 +761,8 @@ elif pagina == "🧾 Validação das Cláusulas":
     aba_validacao_clausulas()
     
 elif pagina == "🔍 Análise Automática":
-    aba_analise_automatica()
+    if st.button("🤖 Iniciar Análise Automática para este contrato"):
+        aba_analise_automatica()
     
 elif pagina == "🧑‍⚖️ Revisão Final":
     aba_revisao_final()
