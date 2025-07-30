@@ -316,104 +316,73 @@ def executar_document_ai(caminho_pdf):
 # Extração de cláusulas via IA
 # =========================
 
+def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
+    """
+    Lê o arquivo armazenado no Google Drive (PDF ou DOCX) e extrai o texto completo via Document AI.
+    """
+    drive = conectar_drive()
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
+    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
+
+    try:
+        if titulo_arquivo.lower().endswith(".docx"):
+            caminho_pdf = docx_para_pdf_temporario(caminho_temp)
+            texto = extrair_com_document_ai(caminho_pdf)
+            os.remove(caminho_pdf)  # limpa PDF temporário
+        elif titulo_arquivo.lower().endswith(".pdf"):
+            texto = extrair_com_document_ai(caminho_temp)
+        else:
+            st.error("❌ Formato de arquivo não suportado. Use .docx ou .pdf.")
+            return ""
+    except Exception as e:
+        st.error(f"❌ Erro ao extrair o contrato: {e}")
+        return ""
+
+    return texto
+
+
 def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas")
+    st.title("🧾 Validação das Cláusulas Contratuais")
 
     contratos = obter_contratos_disponiveis()
     if not contratos:
         st.warning("Nenhum contrato disponível.")
         return
 
-    opcoes = [f"{titulo}" for titulo, _ in contratos]
-    contrato_selecionado = st.selectbox("Selecione o contrato:", opcoes)
-    titulo_arquivo, id_arquivo = next(x for x in contratos if x[0] == contrato_selecionado)
+    nomes_arquivos = [titulo for titulo, _ in contratos]
+    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", nomes_arquivos)
 
-    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
-    if not texto:
+    if not contrato_selecionado:
         st.stop()
 
-    with st.expander("📄 Visualizar texto extraído do contrato"):
-        st.text_area("Texto do Contrato", texto, height=400)
+    titulo_arquivo, id_arquivo = next(item for item in contratos if item[0] == contrato_selecionado)
+
+    st.markdown("### 📄 Visualização do conteúdo do contrato")
+    texto = carregar_texto_contrato_drive(titulo_arquivo, id_arquivo)
+
+    with st.expander("Visualizar texto completo extraído do contrato"):
+        st.text_area("Conteúdo extraído", texto, height=400)
 
     if st.button("🧠 Extrair Cláusulas com IA"):
-        df_clausulas = extrair_clausulas_com_agente(texto)
-        st.session_state.df_clausulas_extraidas = df_clausulas
-        st.success("✅ Cláusulas extraídas com sucesso!")
+        with st.spinner("Executando agente jurídico..."):
+            df_clausulas = extrair_clausulas_robusto(texto)
+            st.session_state["df_clausulas_extraidas"] = df_clausulas
+            st.success("✅ Cláusulas extraídas com sucesso!")
 
     if "df_clausulas_extraidas" in st.session_state:
-        st.markdown("### ✏️ Revise as cláusulas extraídas:")
+        st.markdown("### ✍️ Revisar Cláusulas Extraídas")
         df_editado = st.data_editor(
-            st.session_state.df_clausulas_extraidas,
+            st.session_state["df_clausulas_extraidas"],
             num_rows="dynamic",
             use_container_width=True,
             key="editor_clausulas"
         )
 
         instituicao = st.text_input("Instituição Financeira")
-        if st.button("✅ Validar cláusulas e iniciar análise"):
+        if st.button("✅ Validar cláusulas e salvar"):
             id_contrato = str(uuid.uuid4())
             salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
-            st.success("✅ Cláusulas salvas com sucesso!")
-
-def extrair_texto_docx(caminho_arquivo):
-    doc = docx.Document(caminho_arquivo)
-    texto = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    return texto
-
-def extrair_texto_pdf_document_ai(caminho_pdf):
-    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
-    project_id = st.secrets["gcp_docai"]["project_id"]
-    processor_id = st.secrets["gcp_docai"]["processor_id"]
-    location = "us"
-
-    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
-    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
-
-    with open(caminho_pdf, "rb") as f:
-        raw_document = {"content": f.read(), "mime_type": "application/pdf"}
-    request = {"name": name, "raw_document": raw_document}
-    result = client.process_document(request=request)
-
-    return result.document.text
-
-def carregar_texto_contrato(titulo_arquivo, arquivo_id):
-    drive = conectar_drive()
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
-    drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
-
-    if titulo_arquivo.lower().endswith(".docx"):
-        doc = docx.Document(caminho_temp)
-        texto = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-    elif titulo_arquivo.lower().endswith(".pdf"):
-        texto = executar_document_ai(caminho_temp)
-    else:
-        st.error("Formato de arquivo não suportado.")
-        texto = ""
-    return texto
-
-def dividir_por_secoes_numeradas(texto):
-    """
-    Divide o texto contratual com base em seções numeradas (ex: 1., 2.1, 3.4.5).
-    Retorna uma lista com blocos de texto representando cada seção.
-    """
-    if not isinstance(texto, str):
-        st.error("❌ O texto fornecido não é uma string válida.")
-        return []
-
-    padrao = r"(?=\n?\d{1,2}(\.\d{1,2})*\s)"
-    secoes = re.split(padrao, texto)
-
-    # Garantir que todos os elementos sejam string e significativos
-    secoes_limpos = []
-    for s in secoes:
-        try:
-            s_clean = str(s).strip()
-            if len(s_clean) > 30:
-                secoes_limpos.append(s_clean)
-        except:
-            continue
-
-    return secoes_limpos
+            st.success("📦 Cláusulas validadas e salvas com sucesso.")
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
     paragrafos = texto.split("\n\n")
@@ -470,8 +439,6 @@ Agora processe o seguinte trecho:
 """
     return prompt.strip()
 
-from openai import OpenAI
-
 def extrair_clausulas_robusto(texto):
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
     st.info("🔍 Dividindo contrato em blocos para análise...")
@@ -499,49 +466,6 @@ def extrair_clausulas_robusto(texto):
 
     df = pd.DataFrame(clausulas_total, columns=["clausula"])
     return df
-
-def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas Contratuais")
-
-    contratos = obter_contratos_disponiveis()
-    if not contratos:
-        st.warning("Nenhum contrato disponível.")
-        return
-
-    nomes_arquivos = [titulo for titulo, _ in contratos]
-    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", nomes_arquivos)
-
-    if not contrato_selecionado:
-        st.stop()
-
-    titulo_arquivo, id_arquivo = next(item for item in contratos if item[0] == contrato_selecionado)
-
-    st.markdown("### 📄 Visualização do conteúdo do contrato")
-    texto = carregar_texto_contrato(titulo_arquivo, id_arquivo)
-
-    with st.expander("Visualizar texto completo extraído do contrato"):
-        st.text_area("Conteúdo extraído", texto, height=400)
-
-    if st.button("🧠 Extrair Cláusulas com IA"):
-        with st.spinner("Executando agente jurídico..."):
-            df_clausulas = extrair_clausulas_robusto(texto)
-            st.session_state["df_clausulas_extraidas"] = df_clausulas
-            st.success("✅ Cláusulas extraídas com sucesso!")
-
-    if "df_clausulas_extraidas" in st.session_state:
-        st.markdown("### ✍️ Revisar Cláusulas Extraídas")
-        df_editado = st.data_editor(
-            st.session_state["df_clausulas_extraidas"],
-            num_rows="dynamic",
-            use_container_width=True,
-            key="editor_clausulas"
-        )
-
-        instituicao = st.text_input("Instituição Financeira")
-        if st.button("✅ Validar cláusulas e salvar"):
-            id_contrato = str(uuid.uuid4())
-            salvar_clausulas_validadas(df_editado, id_contrato, instituicao, st.session_state.username)
-            st.success("📦 Cláusulas validadas e salvas com sucesso.")
 
 # =========================
 # Salvar cláusulas extraídas
