@@ -32,6 +32,7 @@ import docx
 import uuid
 import openpyxl
 import time
+from docx2pdf import convert
 
 st.set_page_config(layout = 'wide')
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -251,24 +252,49 @@ def obter_contratos_disponiveis():
     arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
     return [(arq['title'], arq['id']) for arq in arquivos]
 
+def docx_para_pdf_temporario(caminho_docx):
+    caminho_temp_dir = tempfile.mkdtemp()
+    caminho_pdf = os.path.join(caminho_temp_dir, "convertido.pdf")
+    convert(caminho_docx, caminho_pdf)
+    return caminho_pdf
+
+def extrair_com_document_ai(caminho_pdf):
+    credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
+    project_id = st.secrets["gcp_docai"]["project_id"]
+    processor_id = st.secrets["gcp_docai"]["processor_id"]
+    location = "us"
+
+    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
+    name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+
+    with open(caminho_pdf, "rb") as f:
+        document = {"content": f.read(), "mime_type": "application/pdf"}
+
+    request = {"name": name, "raw_document": document}
+    result = client.process_document(request=request)
+    return result.document.text
+
 def carregar_texto_contrato(caminho):
-    doc = Document(caminho)
-    textos = []
+    """
+    Função compatível com Streamlit Cloud.
+    Lê .docx ou .pdf e extrai conteúdo com o Document AI.
+    """
+    try:
+        if caminho.lower().endswith(".docx"):
+            caminho_pdf = docx_para_pdf_temporario(caminho)
+            texto = extrair_com_document_ai(caminho_pdf)
+            os.remove(caminho_pdf)  # remove PDF temporário
+        elif caminho.lower().endswith(".pdf"):
+            texto = extrair_com_document_ai(caminho)
+        else:
+            st.error("❌ Formato de arquivo não suportado. Use .docx ou .pdf.")
+            return ""
 
-    # Parágrafos simples
-    for p in doc.paragraphs:
-        if p.text.strip():
-            textos.append(p.text.strip())
+        return texto
 
-    # Tabelas
-    for table in doc.tables:
-        for row in table.rows:
-            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-            if row_text:
-                textos.append(row_text)
-
-    return "\n".join(textos)
-
+    except Exception as e:
+        st.error(f"❌ Erro ao extrair o contrato: {e}")
+        return ""
 
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
