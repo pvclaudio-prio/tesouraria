@@ -274,28 +274,6 @@ def extrair_com_document_ai(caminho_pdf):
     result = client.process_document(request=request)
     return result.document.text
 
-def carregar_texto_contrato(caminho):
-    """
-    Função compatível com Streamlit Cloud.
-    Lê .docx ou .pdf e extrai conteúdo com o Document AI.
-    """
-    try:
-        if caminho.lower().endswith(".docx"):
-            caminho_pdf = docx_para_pdf_temporario(caminho)
-            texto = extrair_com_document_ai(caminho_pdf)
-            os.remove(caminho_pdf)  # remove PDF temporário
-        elif caminho.lower().endswith(".pdf"):
-            texto = extrair_com_document_ai(caminho)
-        else:
-            st.error("❌ Formato de arquivo não suportado. Use .docx ou .pdf.")
-            return ""
-
-        return texto
-
-    except Exception as e:
-        st.error(f"❌ Erro ao extrair o contrato: {e}")
-        return ""
-
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
     project_id = st.secrets["gcp_docai"]["project_id"]
