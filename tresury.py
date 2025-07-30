@@ -488,7 +488,7 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_emai
 def carregar_clausulas_validadas():
     df = carregar_base_contratos()
     if df.empty:
-        return pd.DataFrame(columns=["id_contrato", "clausula"])
+        return pd.DataFrame(columns=["nome_arquivo", "clausula"])
 
     clausulas_expandidas = []
 
@@ -499,7 +499,7 @@ def carregar_clausulas_validadas():
         clausulas = [c.strip() for c in texto.split("\n") if c.strip()]
         for c in clausulas:
             clausulas_expandidas.append({
-                "id_contrato": row["id_contrato"],
+                "nome_arquivo": row["nome_arquivo"],
                 "clausula": c
             })
 
@@ -509,11 +509,11 @@ def aba_analise_automatica():
     st.title("📌 Análise Automática das Cláusulas")
 
     df_clausulas = carregar_clausulas_validadas()
-    contratos = df_clausulas["id_contrato"].unique().tolist()
+    contratos = df_clausulas["nome_arquivo"].unique().tolist()
 
     contrato_selecionado = st.selectbox("Selecione o contrato para análise:", contratos)
 
-    df_filtrado = df_clausulas[df_clausulas["id_contrato"] == contrato_selecionado].copy()
+    df_filtrado = df_clausulas[df_clausulas["nome_arquivo"] == contrato_selecionado].copy()
     st.markdown("### 📄 Cláusulas do contrato selecionado:")
     st.dataframe(df_filtrado[["clausula"]], use_container_width=True)
 
