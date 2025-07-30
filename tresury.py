@@ -482,6 +482,55 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_emai
     df = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
     salvar_base_contratos(df)
 
+# =========================
+# 📌 Aba: Análise Automática das Cláusulas
+# =========================
+def carregar_clausulas_validadas():
+    df = carregar_base_contratos()
+    linhas_expandida = []
+
+    for _, linha in df.iterrows():
+        id_contrato = linha["id_contrato"]
+        usuario = linha.get("usuario_upload", "")
+        instituicao = linha.get("instituicao_financeira", "")
+        data = linha.get("data_upload", "")
+        texto = linha.get("clausulas", "")
+        if texto:
+            clausulas = [c.strip() for c in texto.split("\n") if c.strip()]
+            for i, cl in enumerate(clausulas, start=1):
+                linhas_expandida.append({
+                    "id_contrato": id_contrato,
+                    "clausula_id": i,
+                    "clausula": cl,
+                    "usuario_upload": usuario,
+                    "instituicao_financeira": instituicao,
+                    "data_upload": data,
+                    "status_juridico": "",
+                    "motivo_juridico": "",
+                    "status_financeiro": "",
+                    "motivo_financeiro": "",
+                    "status_supervisor": "",
+                    "motivo_supervisor": ""
+                })
+
+    return pd.DataFrame(linhas_expandida)
+
+def aba_analise_automatica():
+    st.title("📌 Análise Automática das Cláusulas")
+
+    df_clausulas = carregar_clausulas_validadas()
+    contratos = df_clausulas["id_contrato"].unique().tolist()
+
+    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", contratos)
+
+    df_filtrado = df_clausulas[df_clausulas["id_contrato"] == contrato_selecionado].copy()
+    st.markdown("### 📄 Cláusulas do contrato selecionado:")
+    st.dataframe(df_filtrado[["clausula_id", "clausula"]], use_container_width=True)
+
+    if st.button("🔍 Analisar Cláusulas com IA"):
+        st.warning("🔧 Em breve: integração com agentes jurídico, financeiro e supervisor para análise automatizada.")
+
+
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
@@ -492,7 +541,7 @@ elif pagina == "🧾 Validação das Cláusulas":
     aba_validacao_clausulas()
     
 elif pagina == "🔍 Análise Automática":
-    st.info("Execução dos agentes financeiros e jurídicos.")
+    aba_analise_automatica()
     
 elif pagina == "🧑‍⚖️ Revisão Final":
     st.info("Revisão final das cláusulas com input do usuário.")
