@@ -763,6 +763,9 @@ elif pagina == "🧾 Validação das Cláusulas":
     
 elif pagina == "🔍 Análise Automática":
     aba_analise_automatica()
+    df_resultado = pd.DataFrame(resultados)
+    st.success("✅ Análise automática concluída.")
+    st.dataframe(df_resultado, use_container_width=True)
     
 elif pagina == "🧑‍⚖️ Revisão Final":
     aba_revisao_final()
