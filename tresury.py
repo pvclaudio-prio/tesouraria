@@ -487,33 +487,23 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato, instituicao, user_emai
 # =========================
 def carregar_clausulas_validadas():
     df = carregar_base_contratos()
-    linhas_expandida = []
+    if df.empty:
+        return pd.DataFrame(columns=["id_contrato", "clausula"])
 
-    for _, linha in df.iterrows():
-        id_contrato = linha["id_contrato"]
-        usuario = linha.get("usuario_upload", "")
-        instituicao = linha.get("instituicao_financeira", "")
-        data = linha.get("data_upload", "")
-        texto = linha.get("clausulas", "")
-        if texto:
-            clausulas = [c.strip() for c in texto.split("\n") if c.strip()]
-            for i, cl in enumerate(clausulas, start=1):
-                linhas_expandida.append({
-                    "id_contrato": id_contrato,
-                    "clausula_id": i,
-                    "clausula": cl,
-                    "usuario_upload": usuario,
-                    "instituicao_financeira": instituicao,
-                    "data_upload": data,
-                    "status_juridico": "",
-                    "motivo_juridico": "",
-                    "status_financeiro": "",
-                    "motivo_financeiro": "",
-                    "status_supervisor": "",
-                    "motivo_supervisor": ""
-                })
+    clausulas_expandidas = []
 
-    return pd.DataFrame(linhas_expandida)
+    for _, row in df.iterrows():
+        texto = row.get("clausulas", "")
+        if not isinstance(texto, str) or not texto.strip():
+            continue
+        clausulas = [c.strip() for c in texto.split("\n") if c.strip()]
+        for c in clausulas:
+            clausulas_expandidas.append({
+                "id_contrato": row["id_contrato"],
+                "clausula": c
+            })
+
+    return pd.DataFrame(clausulas_expandidas)
 
 def aba_analise_automatica():
     st.title("📌 Análise Automática das Cláusulas")
