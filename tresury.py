@@ -619,14 +619,12 @@ def aba_analise_automatica():
                 resultados.append({
                     "nome_arquivo": contrato_escolhido,
                     "clausula": clausula,
-                    "revisao_juridico": "Conforme" if "Conforme" in resposta_juridico[:50] else "Necessita Revisão",
+                    "revisao_juridico": "Conforme" if "Conforme" in resposta_juridico else "Necessita Revisão",
                     "motivo_juridico": resposta_juridico,
-                    "revisao_financeiro": "Conforme" if "Conforme" in resposta_financeiro[:50] else "Necessita Revisão",
+                    "revisao_financeiro": "Conforme" if "Conforme" in resposta_financeiro else "Necessita Revisão",
                     "motivo_financeiro": resposta_financeiro,
-                    "revisao_sup_juridico": "Concorda" if "Concorda" in resposta_supervisor else "Não Concorda",
-                    "motivo_sup_juridico": resposta_supervisor,
-                    "revisao_sup_financeiro": "Concorda" if "Concorda" in resposta_supervisor else "Não Concorda",
-                    "motivo_sup_financeiro": resposta_supervisor
+                    "revisao_sup": "Concorda" if "Concorda" in resposta_supervisor else "Não Concorda",
+                    "motivo_sup": resposta_supervisor,
                 })
     
         # Montar DataFrame final
