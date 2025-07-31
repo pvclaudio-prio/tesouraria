@@ -725,15 +725,15 @@ def aba_revisao_final():
         key="revisao_final_editor"
     )
 
-    if st.button("✅ Salvar revisão final do usuário"):
-        salvar_clausulas_validadas_usuario(df_editado)
-        st.success("✅ Revisão final do usuário salva com sucesso!")
-
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_editado.to_excel(writer, index=False)
     st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    
+   
+    if st.button("✅ Salvar revisão final do usuário"):
+        salvar_clausulas_validadas_usuario(df_editado)
+        st.success("✅ Revisão final do usuário salva com sucesso!")
+        
 def salvar_clausulas_validadas_usuario(df):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
