@@ -544,7 +544,7 @@ def aba_analise_automatica():
             st.stop()
     
         df_clausulas = df[df["nome_arquivo"] == contrato_escolhido].copy()
-        clausulas = df_clausulas.iloc[0]["clausula"].split("\n")
+        clausulas = df_clausulas["clausula"].tolist()
         clausulas = [c.strip() for c in clausulas if c.strip()]
     
         # Carregar índices financeiros
