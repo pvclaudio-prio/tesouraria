@@ -851,6 +851,87 @@ def aba_indices_prio():
 
         st.success("✅ Índices salvos e backup criado com sucesso!")
 
+# =========================
+# 📌 Aba: Relatório Gerencial
+# =========================
+
+def aba_relatorios_gerenciais():
+    st.title("📘 Relatórios Gerenciais - Contratos")
+
+    df = carregar_clausulas_validadas_usuario()
+    if df.empty:
+        st.warning("Nenhuma cláusula validada encontrada.")
+        return
+
+    contratos = df["nome_arquivo"].dropna().unique().tolist()
+    contrato = st.selectbox("Selecione o contrato para gerar o relatório:", contratos)
+
+    df_contrato = df[df["nome_arquivo"] == contrato].copy()
+
+    total = len(df_contrato)
+    conforme_jur = df_contrato[df_contrato["revisao_juridico"] == "Conforme"].shape[0]
+    rev_jur = df_contrato[df_contrato["revisao_juridico"] == "Necessita Revisão"].shape[0]
+
+    conforme_fin = df_contrato[df_contrato["revisao_financeiro"] == "Conforme"].shape[0]
+    rev_fin = df_contrato[df_contrato["revisao_financeiro"] == "Necessita Revisão"].shape[0]
+
+    disc_sup_jur = df_contrato[df_contrato["revisao_sup_juridico"] == "Não Concorda"].shape[0]
+    disc_sup_fin = df_contrato[df_contrato["revisao_sup_financeiro"] == "Não Concorda"].shape[0]
+
+    # Ações recomendadas ordenadas por criticidade
+    acoes = []
+    for _, row in df_contrato.iterrows():
+        if row["revisao_juridico"] == "Necessita Revisão":
+            acoes.append("🔹 Revisar cláusula jurídica: " + row["clausula"][:100] + "...")
+        if row["revisao_financeiro"] == "Necessita Revisão":
+            acoes.append("🔸 Avaliar cláusula financeira: " + row["clausula"][:100] + "...")
+        if row["revisao_sup_juridico"] == "Não Concorda":
+            acoes.append("⚠️ Supervisor discordou da análise jurídica: " + row["clausula"][:100] + "...")
+        if row["revisao_sup_financeiro"] == "Não Concorda":
+            acoes.append("⚠️ Supervisor discordou da análise financeira: " + row["clausula"][:100] + "...")
+
+    acoes = list(dict.fromkeys(acoes))[:10]  # Remove duplicatas e limita a 10 ações
+
+    st.markdown("### 📄 Sumário Executivo")
+    st.markdown(f"- Total de cláusulas analisadas: **{total}**")
+    st.markdown(f"- Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
+    st.markdown(f"- Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
+    st.markdown(f"- Discordâncias do Supervisor: Jurídico {disc_sup_jur} / Financeiro {disc_sup_fin}")
+
+    st.markdown("### ✅ Principais Ações Recomendadas")
+    for acao in acoes:
+        st.markdown(f"- {acao}")
+
+    if st.button("📤 Gerar Relatório em Word"):
+        from docx import Document
+        from docx.shared import Pt
+
+        doc = Document()
+        doc.add_heading(f"Relatório Executivo - {contrato}", 0)
+
+        doc.add_paragraph(f"Data: {datetime.now().strftime('%d/%m/%Y')}\n")
+        doc.add_paragraph(f"Total de cláusulas analisadas: {total}")
+        doc.add_paragraph(f"Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
+        doc.add_paragraph(f"Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
+        doc.add_paragraph(f"Discordâncias do Supervisor:")
+        doc.add_paragraph(f"- Jurídico: {disc_sup_jur}")
+        doc.add_paragraph(f"- Financeiro: {disc_sup_fin}")
+
+        doc.add_heading("Principais Ações Recomendadas", level=1)
+        for acao in acoes:
+            doc.add_paragraph(acao, style='List Bullet')
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        st.download_button(
+            label="📥 Baixar Relatório em Word",
+            data=buffer,
+            file_name=f"relatorio_{contrato.replace(' ', '_')}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+
 # -----------------------------
 # Renderização de conteúdo por página
 # -----------------------------
@@ -870,4 +951,4 @@ elif pagina == "📊 Índices PRIO":
     aba_indices_prio()
     
 elif pagina == "📘 Relatórios Gerenciais":
-    st.info("Geração de relatórios estratégicos com IA.")
+    aba_relatorios_gerenciais()
