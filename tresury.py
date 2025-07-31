@@ -553,8 +553,8 @@ def aba_analise_automatica():
             status_text = st.empty()
 
             for i, clausula in enumerate(clausulas):
-                status_text.text(f"🔍 Processando cláusula {i+1}/{len(clausulas)}...")
-                with st.spinner(f"Analisando cláusula {i+1}/{len(clausulas)}..."):
+                status_text.text(f"Processando cláusula {i+1}/{len(clausulas)}...")
+                with st.spinner():
 
                     # Agente Jurídico
                     prompt_juridico = f"""
