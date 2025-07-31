@@ -539,10 +539,9 @@ def aba_analise_automatica():
                 df_contrato.to_excel(writer, index=False)
             st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    # Mostrar botão de análise se houver cláusulas
+    # Botão para iniciar análise automática
     if clausulas:
         if st.button("✅ Iniciar Análise Automática"):
-            # Carregar índices financeiros
             drive = conectar_drive()
             pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
             arquivos = drive.ListFile({
@@ -560,8 +559,13 @@ def aba_analise_automatica():
             resultados = []
             st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro...")
 
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
             for i, clausula in enumerate(clausulas):
-                with st.spinner(f"Processando cláusula {i+1}/{len(clausulas)}..."):
+                status_text.text(f"🔍 Processando cláusula {i+1}/{len(clausulas)}...")
+                with st.spinner(f"Analisando cláusula {i+1}/{len(clausulas)}..."):
+
                     # Agente Jurídico
                     prompt_juridico = f"""
 Você é um advogado especialista em contratos de dívida.
@@ -636,53 +640,30 @@ Análise Financeira:
                         "motivo_sup": resposta_supervisor,
                     })
 
+                progress_bar.progress((i + 1) / len(clausulas))
+
             df_resultado = pd.DataFrame(resultados)
+            st.session_state["analise_automatica_resultado"] = df_resultado
             st.success("✅ Análise automática concluída.")
             st.dataframe(df_resultado, use_container_width=True)
 
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                df_resultado.to_excel(writer, index=False)
-            st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-            if st.button("Desejar Salvar ?"):
-                salvar_clausulas_validadas_usuario(df_resultado)
-                st.success("✅ Revisão final do usuário salva com sucesso!")
     else:
         st.warning("Não há cláusulas validadas disponíveis.")
 
-def salvar_clausulas_validadas_usuario(df):
-    drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+    # 🔁 Exibir botões se houver resultado em memória
+    if "analise_automatica_resultado" in st.session_state:
+        df_resultado = st.session_state["analise_automatica_resultado"]
 
-    nome_arquivo = "clausulas_analisadas.xlsx"
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    df.to_excel(caminho_temp, index=False)
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_resultado.to_excel(writer, index=False)
 
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
-    }).GetList()
+        st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    if arquivos:
-        arquivo = arquivos[0]
-    else:
-        arquivo = drive.CreateFile({
-            'title': nome_arquivo,
-            'parents': [{'id': pasta_bases_id}]
-        })
+        if st.button("Desejar Salvar ?"):
+            salvar_clausulas_validadas_usuario(df_resultado)
+            st.success("✅ Revisão final do usuário salva com sucesso!")
 
-    arquivo.SetContentFile(caminho_temp)
-    arquivo.Upload()
-
-    # Backup
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = drive.CreateFile({
-        'title': f'clausulas_analisadas__{timestamp}.xlsx',
-        'parents': [{'id': pasta_backups_id}]
-    })
-    backup.SetContentFile(caminho_temp)
-    backup.Upload()
     
 def carregar_clausulas_analisadas():
     drive = conectar_drive()
