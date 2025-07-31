@@ -529,19 +529,6 @@ def aba_analise_automatica():
     df_clausulas = df[df["nome_arquivo"] == contrato_escolhido].copy() if contrato_escolhido else pd.DataFrame()
     clausulas = [c.strip() for c in df_clausulas["clausula"].tolist() if c.strip()] if not df_clausulas.empty else []
 
-    # Exibir análises anteriores, se existirem
-    if df_contrato is not None and not df_contrato.empty:
-        df_contrato = df_contrato[df_contrato["nome_arquivo"] == contrato_escolhido]
-        if not df_contrato.empty:
-            st.dataframe(df_contrato, use_container_width=True)
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-                df_contrato.to_excel(writer, index=False)
-            st.download_button("📥 Baixar Análises", data=buffer.getvalue(),
-                   file_name="clausulas_analisadas.xlsx",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                   key="download_anterior")
-
     # Botão para iniciar análise automática
     if clausulas:
         if st.button("✅ Iniciar Análise Automática"):
@@ -648,27 +635,41 @@ Análise Financeira:
             df_resultado = pd.DataFrame(resultados)
             st.session_state["analise_automatica_resultado"] = df_resultado
             st.success("✅ Análise automática concluída.")
-            st.dataframe(df_resultado, use_container_width=True)
 
     else:
         st.warning("Não há cláusulas validadas disponíveis.")
 
-    # 🔁 Exibir botões se houver resultado em memória
+    # 🔁 Exibir resultado atual e botões (prioridade: resultado novo)
     if "analise_automatica_resultado" in st.session_state:
         df_resultado = st.session_state["analise_automatica_resultado"]
+        st.dataframe(df_resultado, use_container_width=True)
 
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df_resultado.to_excel(writer, index=False)
 
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(),
-                   file_name="clausulas_analisadas.xlsx",
-                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                   key="download_novo")
+                           file_name="clausulas_analisadas.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="download_novo")
 
-        if st.button("Desejar Salvar ?"):
+        if st.button("Desejar Salvar ?", key="salvar_novo"):
             salvar_clausulas_validadas_usuario(df_resultado)
             st.success("✅ Revisão final do usuário salva com sucesso!")
+            del st.session_state["analise_automatica_resultado"]
+
+    # 🔁 Exibir análise antiga apenas se não houver análise nova
+    elif df_contrato is not None and not df_contrato.empty:
+        df_contrato = df_contrato[df_contrato["nome_arquivo"] == contrato_escolhido]
+        if not df_contrato.empty:
+            st.dataframe(df_contrato, use_container_width=True)
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                df_contrato.to_excel(writer, index=False)
+            st.download_button("📥 Baixar Análises", data=buffer.getvalue(),
+                               file_name="clausulas_analisadas.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               key="download_anterior")
 
     
 def carregar_clausulas_analisadas():
