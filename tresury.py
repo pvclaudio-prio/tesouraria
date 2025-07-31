@@ -673,16 +673,6 @@ def aba_revisao_final():
 
     df_filtrado = df[df["nome_arquivo"] == contrato].copy()
 
-    st.markdown("### 🔍 Análise dos Agentes")
-    st.dataframe(
-        df_filtrado[[
-            "clausula",
-            "revisao_juridico", "motivo_juridico",
-            "revisao_financeiro", "motivo_financeiro",
-            "revisao_sup", "motivo_sup"
-        ]], use_container_width=True
-    )
-
     st.markdown("### 📝 Revisão Final do Usuário")
 
     # Inicializar colunas editáveis, se necessário
@@ -713,6 +703,10 @@ def aba_revisao_final():
     if st.button("✅ Salvar revisão final do usuário"):
         salvar_clausulas_validadas_usuario(df_editado)
         st.success("✅ Revisão final do usuário salva com sucesso!")
+
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_editado.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 def carregar_clausulas_analisadas():
     drive = conectar_drive()
