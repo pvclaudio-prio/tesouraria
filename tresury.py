@@ -518,6 +518,7 @@ def carregar_clausulas_contratos():
 
 def aba_analise_automatica():
     st.title("🧠 Análise Automática das Cláusulas")
+    
     df = carregar_clausulas_contratos()
     df_contrato = carregar_clausulas_analisadas()
     
@@ -526,112 +527,110 @@ def aba_analise_automatica():
 
     if (df_contrato is None or df_contrato.empty) or (not contratos_disponiveis):
         st.warning("Não há cláusulas validadas disponíveis.")
-    else:
-        df_contrato = df_contrato[df_contrato['nome_arquivo']==contrato_escolhido]
-        st.dataframe(df_contrato, use_container_width=True)
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df_contrato.to_excel(writer, index=False)
-        st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        return
+
+    df_contrato = df_contrato[df_contrato['nome_arquivo'] == contrato_escolhido]
+    st.dataframe(df_contrato, use_container_width=True)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df_contrato.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     if st.button("✅ Iniciar Análise Automática"):
-        # Carregar cláusulas validadas
         if df.empty or "clausula" not in df.columns:
             st.warning("Não há cláusulas validadas disponíveis.")
             return
-    
+
         if not contrato_escolhido:
             st.stop()
-    
+
         df_clausulas = df[df["nome_arquivo"] == contrato_escolhido].copy()
-        clausulas = df_clausulas["clausula"].tolist()
-        clausulas = [c.strip() for c in clausulas if c.strip()]
-    
+        clausulas = [c.strip() for c in df_clausulas["clausula"].tolist() if c.strip()]
+
         # Carregar índices financeiros
         drive = conectar_drive()
         pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-        arquivos = drive.ListFile({'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"}).GetList()
+        arquivos = drive.ListFile({
+            'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
+        }).GetList()
         if not arquivos:
             st.error("Base de índices financeiros 'empresa_referencia_PRIO.xlsx' não encontrada.")
             return
-    
+
         caminho_indices = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         arquivos[0].GetContentFile(caminho_indices)
         df_indices = pd.read_excel(caminho_indices)
-    
-        # Criar cliente da OpenAI
+
         client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-    
         resultados = []
         st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro...")
-    
+
         for i, clausula in enumerate(clausulas):
             with st.spinner(f"Processando cláusula {i+1}/{len(clausulas)}..."):
-    
-                # 🔹 Agente Jurídico
+                # Agente Jurídico
                 prompt_juridico = f"""
-    Você é um advogado especialista em contratos de dívida.
-    Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
-    Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
-    Justifique de forma objetiva com base jurídica.
-    
-    Cláusula:
-    \"\"\"{clausula}\"\"\"
-    """
+Você é um advogado especialista em contratos de dívida.
+Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
+Justifique de forma objetiva com base jurídica.
+
+Cláusula:
+\"\"\"{clausula}\"\"\"
+"""
                 resposta_juridico = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt_juridico}],
                     temperature=0,
                     max_tokens=1000
                 ).choices[0].message.content.strip()
-    
-                # 🔹 Agente Financeiro
+
+                # Agente Financeiro
                 texto_indices = df_indices.to_string(index=False)
                 prompt_financeiro = f"""
-    Você é um especialista financeiro com foco em contratos de captação de dívida. Abaixo estão os índices financeiros da empresa PRIO:
-    
-    {texto_indices}
-    
-    Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
-    Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
-    Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
-    índices financeiros para análise.
-    Justifique com base nos dados da empresa e benchmarking de mercado para casos semelhantes.
-    
-    Cláusula:
-    \"\"\"{clausula}\"\"\"
-    """
+Você é um especialista financeiro com foco em contratos de captação de dívida. Abaixo estão os índices financeiros da empresa PRIO:
+
+{texto_indices}
+
+Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
+Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
+Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
+índices financeiros para análise.
+Justifique com base nos dados da empresa e benchmarking de mercado para casos semelhantes.
+
+Cláusula:
+\"\"\"{clausula}\"\"\"
+"""
                 resposta_financeiro = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt_financeiro}],
                     temperature=0,
                     max_tokens=1000
                 ).choices[0].message.content.strip()
-    
-                # 🔹 Agente Supervisor
+
+                # Agente Supervisor
                 prompt_supervisor = f"""
-    Você é o supervisor responsável pela revisão final. 
-    Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
-    Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente o motivo.
-    Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
-    
-    Cláusula:
-    \"\"\"{clausula}\"\"\"
-    
-    Análise Jurídica:
-    {resposta_juridico}
-    
-    Análise Financeira:
-    {resposta_financeiro}
-    """
+Você é o supervisor responsável pela revisão final. 
+Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
+Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente o motivo.
+Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
+
+Cláusula:
+\"\"\"{clausula}\"\"\"
+
+Análise Jurídica:
+{resposta_juridico}
+
+Análise Financeira:
+{resposta_financeiro}
+"""
                 resposta_supervisor = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": prompt_supervisor}],
                     temperature=0,
                     max_tokens=1000
                 ).choices[0].message.content.strip()
-    
-                # Coletar resultados
+
                 resultados.append({
                     "nome_arquivo": contrato_escolhido,
                     "clausula": clausula,
@@ -642,19 +641,16 @@ def aba_analise_automatica():
                     "revisao_sup": "Concorda" if "Concorda" in resposta_supervisor else "Não Concorda",
                     "motivo_sup": resposta_supervisor,
                 })
-    
-        # Montar DataFrame final
+
         df_resultado = pd.DataFrame(resultados)
         st.success("✅ Análise automática concluída.")
         st.dataframe(df_resultado, use_container_width=True)
 
-        # Exportar
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df_resultado.to_excel(writer, index=False)
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        
-        #Salvar Clausulas
+
         if st.button("Desejar Salvar ?"):
             salvar_clausulas_validadas_usuario(df_resultado)
             st.success("✅ Revisão final do usuário salva com sucesso!")
