@@ -534,7 +534,7 @@ def aba_analise_automatica():
             df_contrato.to_excel(writer, index=False)
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    if st.button("Iniciar Análise Automática"):
+    if st.button("✅ Iniciar Análise Automática"):
         # Carregar cláusulas validadas
         if df.empty or "clausulas" not in df.columns:
             st.warning("Não há cláusulas validadas disponíveis.")
