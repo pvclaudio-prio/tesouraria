@@ -526,7 +526,7 @@ def aba_analise_automatica():
     contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
     contrato_escolhido = st.selectbox("Selecione o contrato:", contratos_disponiveis)
 
-    if df_contrato.empty or contratos_disponiveis.empty:
+    if (df_contrato is None or df_contrato.empty) or (not contratos_disponiveis):
         st.warning("Não há cláusulas validadas disponíveis.")
     else:
         df_contrato = df_contrato[df_contrato['nome_arquivo']==contrato_escolhido]
