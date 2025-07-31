@@ -704,6 +704,7 @@ def aba_revisao_final():
         salvar_clausulas_validadas_usuario(df_editado)
         st.success("✅ Revisão final do usuário salva com sucesso!")
 
+    buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_editado.to_excel(writer, index=False)
     st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
