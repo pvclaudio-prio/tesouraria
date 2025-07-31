@@ -659,6 +659,32 @@ def aba_analise_automatica():
             df_resultado.to_excel(writer, index=False)
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+def carregar_clausulas_analisadas():
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_analisadas.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("❌ Base de cláusulas analisadas não encontrada.")
+        return pd.DataFrame(columns=[
+            "nome_arquivo", "clausula",
+            "analise_juridico_status", "analise_juridico_motivo",
+            "analise_financeiro_status", "analise_financeiro_motivo",
+            "revisao_juridico_status", "revisao_juridico_motivo",
+            "revisao_financeiro_status", "revisao_financeiro_motivo"
+        ])
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    return pd.read_excel(caminho_temp)
+    
+# =========================
+# 📌 Aba: Revisão Final
+# =========================
+
 def aba_revisao_final():
     st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
     
@@ -708,28 +734,6 @@ def aba_revisao_final():
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_editado.to_excel(writer, index=False)
     st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-def carregar_clausulas_analisadas():
-    drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_analisadas.xlsx' and trashed = false"
-    }).GetList()
-
-    if not arquivos:
-        st.warning("❌ Base de cláusulas analisadas não encontrada.")
-        return pd.DataFrame(columns=[
-            "nome_arquivo", "clausula",
-            "analise_juridico_status", "analise_juridico_motivo",
-            "analise_financeiro_status", "analise_financeiro_motivo",
-            "revisao_juridico_status", "revisao_juridico_motivo",
-            "revisao_financeiro_status", "revisao_financeiro_motivo"
-        ])
-
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    arquivos[0].GetContentFile(caminho_temp)
-    return pd.read_excel(caminho_temp)
     
 def salvar_clausulas_validadas_usuario(df):
     drive = conectar_drive()
@@ -786,6 +790,67 @@ def carregar_clausulas_validadas():
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
+
+# =========================
+# 📌 Aba: Índices PRIO
+# =========================
+
+def aba_indices_prio():
+    st.title("📊 Índices Financeiros da PRIO")
+
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    nome_arquivo = "empresa_referencia_PRIO.xlsx"
+
+    # Verificar se o arquivo existe no Drive
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("Base 'empresa_referencia_PRIO.xlsx' não encontrada. Será criada uma nova base.")
+        df_indices = pd.DataFrame(columns=["EBITDA", "Mrg EBITDA", "Res Fin", "Dívida", "Lucro Líq", "Caixa"])
+    else:
+        caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+        arquivos[0].GetContentFile(caminho_temp)
+        df_indices = pd.read_excel(caminho_temp)
+
+    st.markdown("### ✍️ Editar Índices")
+    df_editado = st.data_editor(
+        df_indices,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor_indices_prio"
+    )
+
+    if st.button("💾 Salvar Índices"):
+        caminho_temp_salvar = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+        df_editado.to_excel(caminho_temp_salvar, index=False)
+
+        # Atualizar ou criar o arquivo no Drive
+        if arquivos:
+            arquivo = arquivos[0]
+        else:
+            arquivo = drive.CreateFile({
+                'title': nome_arquivo,
+                'parents': [{'id': pasta_bases_id}]
+            })
+
+        arquivo.SetContentFile(caminho_temp_salvar)
+        arquivo.Upload()
+
+        # Criar backup
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup = drive.CreateFile({
+            'title': f"empresa_referencia_PRIO__{timestamp}.xlsx",
+            'parents': [{'id': pasta_backups_id}]
+        })
+        backup.SetContentFile(caminho_temp_salvar)
+        backup.Upload()
+
+        st.success("✅ Índices salvos e backup criado com sucesso!")
 
 # -----------------------------
 # Renderização de conteúdo por página
