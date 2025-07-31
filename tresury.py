@@ -665,6 +665,7 @@ def aba_revisao_final():
     df = carregar_clausulas_validadas()
     if df.empty:
         df = carregar_clausulas_analisadas()
+        time.sleep(3) 
         if df.empty:
             st.warning("Nenhuma cláusula analisada disponível.")
         return
