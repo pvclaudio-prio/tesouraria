@@ -499,7 +499,7 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato):
 def carregar_clausulas_contratos():
     df = carregar_base_contratos()
     if df.empty:
-        return pd.DataFrame(columns=["nome_arquivo", "clausula"])
+        return pd.DataFrame(columns=["nome_arquivo", "clausulas"])
 
     clausulas_expandidas = []
 
