@@ -668,7 +668,6 @@ def aba_revisao_final():
         time.sleep(3) 
         if df.empty:
             st.warning("Nenhuma cláusula analisada disponível.")
-        return
 
     contratos_disponiveis = df["nome_arquivo"].unique().tolist()
     contrato = st.selectbox("Selecione o contrato:", contratos_disponiveis)
