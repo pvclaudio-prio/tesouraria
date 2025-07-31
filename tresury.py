@@ -856,75 +856,62 @@ def aba_indices_prio():
 # =========================
 
 def aba_relatorios_gerenciais():
-    st.title("📘 Relatórios Gerenciais - Contratos")
+    st.title("📘 Relatório Gerencial - Ações Prioritárias por Contrato")
 
     df = carregar_clausulas_validadas()
     if df.empty:
-        st.warning("Nenhuma cláusula validada encontrada.")
+        st.warning("Base de cláusulas validadas está vazia.")
         return
 
-    contratos = df["nome_arquivo"].dropna().unique().tolist()
-    contrato = st.selectbox("Selecione o contrato para gerar o relatório:", contratos)
+    contratos = df["nome_arquivo"].unique().tolist()
+    contrato_selecionado = st.selectbox("Selecione o contrato para análise:", contratos)
 
-    df_contrato = df[df["nome_arquivo"] == contrato].copy()
+    if not contrato_selecionado:
+        return
 
-    total = len(df_contrato)
-    conforme_jur = df_contrato[df_contrato["revisao_juridico"] == "Conforme"].shape[0]
-    rev_jur = df_contrato[df_contrato["revisao_juridico"] == "Necessita Revisão"].shape[0]
+    if st.button("🔍 Executar análise com agente de gestão contratual"):
+        clausulas_contrato = df[df["nome_arquivo"] == contrato_selecionado]["clausula"].tolist()
 
-    conforme_fin = df_contrato[df_contrato["revisao_financeiro"] == "Conforme"].shape[0]
-    rev_fin = df_contrato[df_contrato["revisao_financeiro"] == "Necessita Revisão"].shape[0]
+        texto_clausulas = "\n\n".join(clausulas_contrato)
+        prompt = f"""
+Você é um especialista jurídico em gestão contratual e compliance.
 
-    disc_sup = df_contrato[df_contrato["revisao_sup"] == "Não Concorda"].shape[0]
+Com base nas cláusulas abaixo, elenque de forma objetiva e por ordem de significância as principais ações que o usuário deve realizar para garantir a segurança jurídica do contrato.
 
-    # Ações recomendadas ordenadas por criticidade
-    acoes = []
-    for _, row in df_contrato.iterrows():
-        if row["revisao_juridico"] == "Necessita Revisão":
-            acoes.append("🔹 Revisar cláusula jurídica: " + row["clausula"][:100] + "...")
-        if row["revisao_financeiro"] == "Necessita Revisão":
-            acoes.append("🔸 Avaliar cláusula financeira: " + row["clausula"][:100] + "...")
-        if row["revisao_sup"] == "Não Concorda":
-            acoes.append("⚠️ Supervisor discordou das análises: " + row["clausula"][:100] + "...")
+Sua resposta deve conter no máximo 1 página e apresentar as ações com títulos curtos, seguidos de explicações objetivas (1 parágrafo por ação). Seja direto, técnico e evite repetições.
 
-    acoes = list(dict.fromkeys(acoes))[:10]  # Remove duplicatas e limita a 10 ações
+Cláusulas do contrato:
+\"\"\"{texto_clausulas}\"\"\"
+"""
 
-    st.markdown("### 📄 Sumário Executivo")
-    st.markdown(f"- Total de cláusulas analisadas: **{total}**")
-    st.markdown(f"- Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
-    st.markdown(f"- Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
-    st.markdown(f"- Discordâncias do Supervisor: {disc_sup}")
+        client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+        with st.spinner("🧠 Gerando análise com GPT-4o..."):
+            resposta = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "Você é um consultor jurídico especialista em contratos corporativos."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2,
+                max_tokens=2048
+            )
 
-    st.markdown("### ✅ Principais Ações Recomendadas")
-    for acao in acoes:
-        st.markdown(f"- {acao}")
+        analise_final = resposta.choices[0].message.content.strip()
+        st.markdown("### ✅ Análise Gerada:")
+        st.markdown(analise_final)
 
-    if st.button("📤 Gerar Relatório em Word"):
-        from docx import Document
-        from docx.shared import Pt
-
+        # Exportação em Word
+        buffer = BytesIO()
         doc = Document()
-        doc.add_heading(f"Relatório Executivo - {contrato}", 0)
-
-        doc.add_paragraph(f"Data: {datetime.now().strftime('%d/%m/%Y')}\n")
-        doc.add_paragraph(f"Total de cláusulas analisadas: {total}")
-        doc.add_paragraph(f"Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
-        doc.add_paragraph(f"Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
-        doc.add_paragraph(f"Discordâncias do Supervisor:")
-        doc.add_paragraph(f"- {disc_sup}")
-
-        doc.add_heading("Principais Ações Recomendadas", level=1)
-        for acao in acoes:
-            doc.add_paragraph(acao, style='List Bullet')
-
-        buffer = io.BytesIO()
+        doc.add_heading(f"Relatório Gerencial - {contrato_selecionado}", level=1)
+        for par in analise_final.split("\n"):
+            if par.strip():
+                doc.add_paragraph(par.strip())
         doc.save(buffer)
-        buffer.seek(0)
-
         st.download_button(
-            label="📥 Baixar Relatório em Word",
-            data=buffer,
-            file_name=f"relatorio_{contrato.replace(' ', '_')}.docx",
+            label="📥 Baixar Análise em Word",
+            data=buffer.getvalue(),
+            file_name=f"relatorio_gerencial_{contrato_selecionado}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
 
