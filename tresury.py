@@ -37,7 +37,6 @@ from google.cloud import documentai_v1beta3 as documentai
 from PyPDF2 import PdfReader, PdfWriter
 import io
 
-
 st.set_page_config(layout = 'wide')
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
@@ -666,6 +665,7 @@ def aba_revisao_final():
     df = carregar_clausulas_validadas()
     if df.empty:
         df = carregar_clausulas_analisadas()
+        time.sleep(3) 
         if df.empty:
             st.warning("Nenhuma cláusula analisada disponível.")
             return
