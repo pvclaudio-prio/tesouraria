@@ -536,7 +536,7 @@ def aba_analise_automatica():
 
     if st.button("✅ Iniciar Análise Automática"):
         # Carregar cláusulas validadas
-        if df.empty or "clausulas" not in df.columns:
+        if df.empty or "clausula" not in df.columns:
             st.warning("Não há cláusulas validadas disponíveis.")
             return
     
