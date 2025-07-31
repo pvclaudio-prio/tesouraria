@@ -496,7 +496,7 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato):
 # =========================
 # 📌 Aba: Análise Automática das Cláusulas
 # =========================
-def carregar_clausulas_validadas():
+def carregar_clausulas_contratos():
     df = carregar_base_contratos()
     if df.empty:
         return pd.DataFrame(columns=["nome_arquivo", "clausula"])
@@ -518,7 +518,7 @@ def carregar_clausulas_validadas():
 
 def aba_analise_automatica():
     st.title("🧠 Análise Automática das Cláusulas")
-    df = carregar_base_contratos()
+    df = carregar_clausulas_contratos()
     df_contrato = carregar_clausulas_analisadas()
     
     contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
