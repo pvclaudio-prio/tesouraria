@@ -104,8 +104,7 @@ pagina = st.sidebar.radio("Ir para:", [
     "🔍 Análise Automática",
     "🧑‍⚖️ Revisão Final",
     "📊 Índices PRIO",
-    "📘 Relatórios Gerenciais",
-    "📁 Base de Cláusulas Padrão"
+    "📘 Relatórios Gerenciais"
 ])
 
 # =========================
@@ -149,9 +148,9 @@ def obter_id_pasta(nome_pasta, parent_id=None):
 def aba_upload_contrato(user_email):
     st.title("📂 Upload do Contrato")
 
-    st.markdown("Faça upload de um contrato em `.pdf` ou `.docx` e preencha os dados abaixo.")
+    st.markdown("Faça upload de um contrato em `.pdf` e preencha os dados abaixo.")
 
-    arquivo = st.file_uploader("Selecione o contrato", type=["pdf", "docx"])
+    arquivo = st.file_uploader("Selecione o contrato", type=["pdf"])
     nome_amigavel = st.text_input("Nome do contrato para exibição futura (ex: FAB PRIO - Empréstimo 2025)")
     instituicao = st.text_input("Instituição Financeira")
     idioma = st.selectbox("Idioma do Contrato", ["pt", "en"])
@@ -184,7 +183,7 @@ def aba_upload_contrato(user_email):
         df = carregar_base_contratos()
         novo = {
             "id_contrato": id_contrato,
-            "nome_arquivo": nome_amigavel,  # <- Nome amigável será usado como referência
+            "nome_arquivo": nome_amigavel,
             "tipo": arquivo.name.split(".")[-1],
             "idioma": idioma,
             "instituicao_financeira": instituicao,
@@ -324,7 +323,7 @@ def executar_document_ai(caminho_pdf):
 
 def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
     """
-    Lê o arquivo armazenado no Google Drive (PDF ou DOCX) e extrai o texto completo via Document AI.
+    Lê o arquivo armazenado no Google Drive (PDF) e extrai o texto completo via Document AI.
     """
     drive = conectar_drive()
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
@@ -447,7 +446,7 @@ Agora processe o seguinte trecho:
 
 def extrair_clausulas_robusto(texto):
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-    st.info("🔍 Dividindo contrato em blocos para análise...")
+    st.info("🔍 Analisando o contrato...")
     partes = dividir_em_chunks_simples(texto)
     clausulas_total = []
 
@@ -458,7 +457,7 @@ def extrair_clausulas_robusto(texto):
                 resposta = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
-                        {"role": "system", "content": "Você é um assistente jurídico especializado em cláusulas de contratos de dívida."},
+                        {"role": "system", "content": "Você é um especialista jurídico com muita experiência e domínios em cláusulas de contratos de dívida."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0,
@@ -564,7 +563,7 @@ def aba_analise_automatica():
         client = OpenAI(api_key=st.secrets["openai"]["api_key"])
     
         resultados = []
-        st.info("🔍 Iniciando análise com agentes jurídico, financeiro e supervisor...")
+        st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro...")
     
         for i, clausula in enumerate(clausulas):
             with st.spinner(f"Processando cláusula {i+1}/{len(clausulas)}..."):
@@ -597,7 +596,7 @@ def aba_analise_automatica():
     Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
     Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
     índices financeiros para análise.
-    Justifique com base nos dados da empresa.
+    Justifique com base nos dados da empresa e benchmarking de mercado para casos semelhantes.
     
     Cláusula:
     \"\"\"{clausula}\"\"\"
@@ -613,7 +612,7 @@ def aba_analise_automatica():
                 prompt_supervisor = f"""
     Você é o supervisor responsável pela revisão final. 
     Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
-    Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente.
+    Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente o motivo.
     Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
     
     Cláusula:
@@ -872,7 +871,3 @@ elif pagina == "📊 Índices PRIO":
     
 elif pagina == "📘 Relatórios Gerenciais":
     st.info("Geração de relatórios estratégicos com IA.")
-    
-elif pagina == "📁 Base de Cláusulas Padrão":
-    st.info("Cláusulas padrão utilizadas pelos agentes.")
-
