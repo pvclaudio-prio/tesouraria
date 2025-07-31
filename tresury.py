@@ -858,7 +858,7 @@ def aba_indices_prio():
 def aba_relatorios_gerenciais():
     st.title("📘 Relatórios Gerenciais - Contratos")
 
-    df = carregar_clausulas_validadas_usuario()
+    df = carregar_clausulas_validadas()
     if df.empty:
         st.warning("Nenhuma cláusula validada encontrada.")
         return
