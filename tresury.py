@@ -686,6 +686,62 @@ def carregar_clausulas_analisadas():
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
+
+def salvar_clausulas_validadas_usuario(df):
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    nome_arquivo = "clausulas_analisadas.xlsx"
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    df.to_excel(caminho_temp, index=False)
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
+    }).GetList()
+
+    if arquivos:
+        arquivo = arquivos[0]
+    else:
+        arquivo = drive.CreateFile({
+            'title': nome_arquivo,
+            'parents': [{'id': pasta_bases_id}]
+        })
+
+    arquivo.SetContentFile(caminho_temp)
+    arquivo.Upload()
+
+    # Backup
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = drive.CreateFile({
+        'title': f'clausulas_analisadas__{timestamp}.xlsx',
+        'parents': [{'id': pasta_backups_id}]
+    })
+    backup.SetContentFile(caminho_temp)
+    backup.Upload()
+
+def carregar_clausulas_validadas():
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_validadas.xlsx' and trashed = false"
+    }).GetList()
+
+    if not arquivos:
+        st.warning("❌ Base de cláusulas validadas não encontrada.")
+        return pd.DataFrame(columns=[
+            "nome_arquivo", "clausula",
+            "analise_juridico_status", "analise_juridico_motivo",
+            "analise_financeiro_status", "analise_financeiro_motivo",
+            "revisao_juridico_status", "revisao_juridico_motivo",
+            "revisao_financeiro_status", "revisao_financeiro_motivo",
+            "user_revisao", "motivo_user"
+        ])
+
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    arquivos[0].GetContentFile(caminho_temp)
+    return pd.read_excel(caminho_temp)
     
 # =========================
 # 📌 Aba: Revisão Final
