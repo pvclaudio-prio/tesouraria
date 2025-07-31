@@ -869,7 +869,7 @@ def aba_relatorios_gerenciais():
     if not contrato_selecionado:
         return
 
-    if st.button("🔍 Executar análise com agente de gestão contratual"):
+    if st.button("🔍 Executar análise"):
         clausulas_contrato = df[df["nome_arquivo"] == contrato_selecionado]["clausula"].tolist()
 
         texto_clausulas = "\n\n".join(clausulas_contrato)
@@ -880,19 +880,21 @@ Com base nas cláusulas abaixo, elenque de forma objetiva e por ordem de signifi
 
 Sua resposta deve conter no máximo 1 página e apresentar as ações com títulos curtos, seguidos de explicações objetivas (1 parágrafo por ação). Seja direto, técnico e evite repetições.
 
+Mantenha sempre uma breve referência à cláusula que precisa ser revisada para assegurar a conformidade.
+
 Cláusulas do contrato:
 \"\"\"{texto_clausulas}\"\"\"
 """
 
         client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-        with st.spinner("🧠 Gerando análise com GPT-4o..."):
+        with st.spinner("Gerando análise..."):
             resposta = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": "Você é um consultor jurídico especialista em contratos corporativos."},
+                    {"role": "system", "content": "Você é um consultor jurídico especialista em contratos de captação de dívida internacionais."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2,
+                temperature=0,
                 max_tokens=2048
             )
 
