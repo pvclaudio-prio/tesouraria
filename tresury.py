@@ -875,8 +875,7 @@ def aba_relatorios_gerenciais():
     conforme_fin = df_contrato[df_contrato["revisao_financeiro"] == "Conforme"].shape[0]
     rev_fin = df_contrato[df_contrato["revisao_financeiro"] == "Necessita Revisão"].shape[0]
 
-    disc_sup_jur = df_contrato[df_contrato["revisao_sup_juridico"] == "Não Concorda"].shape[0]
-    disc_sup_fin = df_contrato[df_contrato["revisao_sup_financeiro"] == "Não Concorda"].shape[0]
+    disc_sup = df_contrato[df_contrato["revisao_sup"] == "Não Concorda"].shape[0]
 
     # Ações recomendadas ordenadas por criticidade
     acoes = []
@@ -885,10 +884,8 @@ def aba_relatorios_gerenciais():
             acoes.append("🔹 Revisar cláusula jurídica: " + row["clausula"][:100] + "...")
         if row["revisao_financeiro"] == "Necessita Revisão":
             acoes.append("🔸 Avaliar cláusula financeira: " + row["clausula"][:100] + "...")
-        if row["revisao_sup_juridico"] == "Não Concorda":
-            acoes.append("⚠️ Supervisor discordou da análise jurídica: " + row["clausula"][:100] + "...")
-        if row["revisao_sup_financeiro"] == "Não Concorda":
-            acoes.append("⚠️ Supervisor discordou da análise financeira: " + row["clausula"][:100] + "...")
+        if row["revisao_sup"] == "Não Concorda":
+            acoes.append("⚠️ Supervisor discordou das análises: " + row["clausula"][:100] + "...")
 
     acoes = list(dict.fromkeys(acoes))[:10]  # Remove duplicatas e limita a 10 ações
 
@@ -896,7 +893,7 @@ def aba_relatorios_gerenciais():
     st.markdown(f"- Total de cláusulas analisadas: **{total}**")
     st.markdown(f"- Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
     st.markdown(f"- Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
-    st.markdown(f"- Discordâncias do Supervisor: Jurídico {disc_sup_jur} / Financeiro {disc_sup_fin}")
+    st.markdown(f"- Discordâncias do Supervisor: {disc_sup}")
 
     st.markdown("### ✅ Principais Ações Recomendadas")
     for acao in acoes:
@@ -914,8 +911,7 @@ def aba_relatorios_gerenciais():
         doc.add_paragraph(f"Jurídico: {conforme_jur} Conforme / {rev_jur} Necessita Revisão")
         doc.add_paragraph(f"Financeiro: {conforme_fin} Conforme / {rev_fin} Necessita Revisão")
         doc.add_paragraph(f"Discordâncias do Supervisor:")
-        doc.add_paragraph(f"- Jurídico: {disc_sup_jur}")
-        doc.add_paragraph(f"- Financeiro: {disc_sup_fin}")
+        doc.add_paragraph(f"- {disc_sup}")
 
         doc.add_heading("Principais Ações Recomendadas", level=1)
         for acao in acoes:
