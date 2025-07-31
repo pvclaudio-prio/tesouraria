@@ -531,8 +531,9 @@ def aba_analise_automatica():
     else:
         df_contrato = df_contrato[df_contrato['nome_arquivo']==contrato_escolhido]
         st.dataframe(df_contrato, use_container_width=True)
+        buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df_resultado.to_excel(writer, index=False)
+            df_contrato.to_excel(writer, index=False)
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     if st.button("Iniciar Análise Automática"):
