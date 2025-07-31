@@ -663,11 +663,10 @@ def aba_revisao_final():
     st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
     
     df = carregar_clausulas_validadas()
-    if df.empty:
+    with st.spinner("Carregando cláusulas analisadas..."):
         df = carregar_clausulas_analisadas()
-        time.sleep(3) 
-        if df.empty:
-            st.warning("Nenhuma cláusula analisada disponível.")
+    if df.empty:
+        st.warning("Nenhuma cláusula analisada disponível.")
 
     contratos_disponiveis = df["nome_arquivo"].unique().tolist()
     contrato = st.selectbox("Selecione o contrato:", contratos_disponiveis)
