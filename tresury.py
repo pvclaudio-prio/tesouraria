@@ -658,6 +658,39 @@ def aba_analise_automatica():
             df_resultado.to_excel(writer, index=False)
         st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_analisadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+def salvar_clausulas_validadas_usuario(df):
+    drive = conectar_drive()
+    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+
+    nome_arquivo = "clausulas_analisadas.xlsx"
+    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+    df.to_excel(caminho_temp, index=False)
+
+    arquivos = drive.ListFile({
+        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
+    }).GetList()
+
+    if arquivos:
+        arquivo = arquivos[0]
+    else:
+        arquivo = drive.CreateFile({
+            'title': nome_arquivo,
+            'parents': [{'id': pasta_bases_id}]
+        })
+
+    arquivo.SetContentFile(caminho_temp)
+    arquivo.Upload()
+
+    # Backup
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup = drive.CreateFile({
+        'title': f'clausulas_analisadas__{timestamp}.xlsx',
+        'parents': [{'id': pasta_backups_id}]
+    })
+    backup.SetContentFile(caminho_temp)
+    backup.Upload()
+    
 def carregar_clausulas_analisadas():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -731,10 +764,10 @@ def aba_revisao_final():
     st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
    
     if st.button("✅ Salvar revisão final do usuário"):
-        salvar_clausulas_validadas_usuario(df_editado)
+        salvar_clausulas_revisadas_usuario(df_editado)
         st.success("✅ Revisão final do usuário salva com sucesso!")
         
-def salvar_clausulas_validadas_usuario(df):
+def salvar_clausulas_revisadas_usuario(df):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
