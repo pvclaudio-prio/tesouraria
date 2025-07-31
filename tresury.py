@@ -911,7 +911,7 @@ Cláusulas do contrato:
                 doc.add_paragraph(par.strip())
         doc.save(buffer)
         st.download_button(
-            label="📥 Baixar Análise em Word",
+            label="📥 Baixar Análise",
             data=buffer.getvalue(),
             file_name=f"relatorio_gerencial_{contrato_selecionado}.docx",
             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
