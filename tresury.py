@@ -530,7 +530,7 @@ def aba_analise_automatica():
         st.warning("Não há cláusulas validadas disponíveis.")
     else:
         df_contrato = df_contrato[df_contrato['nome_arquivo']==contrato_escolhido]
-        st.DataFrame(df_contrato)
+        st.dataframe(df_contrato, use_container_width=True)
         
     if st.button("Iniciar Análise Automática"):
         # Carregar cláusulas validadas
