@@ -411,15 +411,16 @@ def gerar_prompt_com_exemplos(texto_chunk):
     exemplos = """
 Exemplos de cláusulas extraídas corretamente:
 
-This Agreement, including its schedules and annexes, shall be interpreted according to the following definitions: “Borrower” refers to PRIO S.A., “Facility” means the total loan commitment...
+The Lender agrees, subject to the terms and conditions hereof, to make available to the Borrower the Loan, in one disbursement during the Availability Period upon receipt of a Drawdown Request from the Borrower not later than the Specified Time.
 
-The applicable interest rate shall be determined as the sum of the Margin (3.5%) and the Base Rate (SOFR), revised quarterly in accordance with market conditions.
+The Borrower shall treat the proceeds of the Loan as a recebimento antecipado de exportação in accordance with the regulations issued by the Central Bank of Brazil. Promptly upon the receipt of the Loan, the Borrower shall enter into an appropriate foreign exchange transaction in order to convert the amount of the Loan proceeds from U.S. Dollars into Brazilian currency (reais) in accordance with the regulations of the Central Bank of Brazil.
 
-The Borrower agrees to repay the Facility in 8 equal semi-annual installments beginning 6 months after the disbursement date.
+The Borrower agrees to contract, execute and perform all of the foreign exchange transactions entered into in connection with this Agreement exclusively with the Lender.
 
-The following shall constitute an Event of Default: (a) failure to pay any amount due; (b) breach of any covenant...
+The Borrower shall keep all copies of the shipping documents with respect to the respective export transaction, including documents conveying title to the Goods; the bill(s) of lading; the commercial invoice(s); and any other document which the Lender may reasonably request to attest the shipment of the Goods in a manner consistent with commercial export transactions.
 
-This Agreement shall be governed by and construed in accordance with the laws of England and Wales.
+Any Loan amounts which, at that time, are unutilized shall be immediately cancelled at the end of the Availability Period.
+
 """
 
     prompt = f"""
@@ -437,8 +438,6 @@ Não inclua o seguinte:
 Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo.
 
 {exemplos}
-
-Não inclua os exemplos {exemplos} na sua lista, eles são apenas para referência de formatação e apresentação do trecho que será processado.
 
 Agora processe o seguinte trecho:
 
