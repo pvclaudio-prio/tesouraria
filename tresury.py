@@ -434,7 +434,8 @@ Não inclua o seguinte:
 - Numeração (1., 2., 3.1, etc.)
 - Título da cláusula (se houver)
 
-Não inclua resumos nem comentários. Apresente a lista como nos exemplos abaixo.
+Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo. Não inclua os exemplos na sua lista, eles são
+apenas para referência de formatação e apresentação.
 
 {exemplos}
 
@@ -451,7 +452,7 @@ def extrair_clausulas_robusto(texto):
     clausulas_total = []
 
     for i, chunk in enumerate(partes):
-        with st.spinner(f"🧠 Analisando trecho {i+1}/{len(partes)}..."):
+        with st.spinner(f"Analisando trecho {i+1}/{len(partes)}..."):
             prompt = gerar_prompt_com_exemplos(chunk)
             try:
                 resposta = client.chat.completions.create(
