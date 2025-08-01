@@ -695,19 +695,36 @@ def carregar_clausulas_analisadas():
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
 
-def salvar_clausulas_validadas_usuario(df):
+def salvar_clausulas_validadas_usuario(df_novo):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
 
     nome_arquivo = "clausulas_analisadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    df.to_excel(caminho_temp, index=False)
 
+    # Carregar base existente, se houver
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
 
+    if arquivos:
+        caminho_antigo = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+        arquivos[0].GetContentFile(caminho_antigo)
+        df_existente = pd.read_excel(caminho_antigo)
+
+        # Remove as cláusulas do contrato atual
+        contrato_atual = df_novo["nome_arquivo"].iloc[0]
+        df_existente = df_existente[df_existente["nome_arquivo"] != contrato_atual]
+
+        # Concatena com as novas
+        df_final = pd.concat([df_existente, df_novo], ignore_index=True)
+    else:
+        df_final = df_novo
+
+    df_final.to_excel(caminho_temp, index=False)
+
+    # Salvar no Drive
     if arquivos:
         arquivo = arquivos[0]
     else:
@@ -805,19 +822,36 @@ def aba_revisao_final():
         salvar_clausulas_revisadas_usuario(df_editado)
         st.success("✅ Revisão final do usuário salva com sucesso!")
         
-def salvar_clausulas_revisadas_usuario(df):
+def salvar_clausulas_revisadas_usuario(df_novo):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
 
     nome_arquivo = "clausulas_validadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    df.to_excel(caminho_temp, index=False)
 
+    # Carregar base existente, se houver
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
 
+    if arquivos:
+        caminho_antigo = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
+        arquivos[0].GetContentFile(caminho_antigo)
+        df_existente = pd.read_excel(caminho_antigo)
+
+        # Remove cláusulas do contrato atual
+        contrato_atual = df_novo["nome_arquivo"].iloc[0]
+        df_existente = df_existente[df_existente["nome_arquivo"] != contrato_atual]
+
+        # Concatena com as novas cláusulas revisadas
+        df_final = pd.concat([df_existente, df_novo], ignore_index=True)
+    else:
+        df_final = df_novo
+
+    df_final.to_excel(caminho_temp, index=False)
+
+    # Salvar no Drive
     if arquivos:
         arquivo = arquivos[0]
     else:
@@ -829,7 +863,7 @@ def salvar_clausulas_revisadas_usuario(df):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # Backup
+    # Backup com timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = drive.CreateFile({
         'title': f'clausulas_validadas__{timestamp}.xlsx',
