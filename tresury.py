@@ -940,7 +940,7 @@ def aba_relatorios_gerenciais():
     if not contrato_selecionado:
         return
 
-    if st.button("🔍 Executar análise"):
+    if st.button("✅ Executar análise"):
         clausulas_contrato = df[df["nome_arquivo"] == contrato_selecionado]["clausula"].tolist()
 
         texto_clausulas = "\n\n".join(clausulas_contrato)
