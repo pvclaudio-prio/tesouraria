@@ -434,10 +434,11 @@ Não inclua o seguinte:
 - Numeração (1., 2., 3.1, etc.)
 - Título da cláusula (se houver)
 
-Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo. Não inclua os exemplos na sua lista, eles são
-apenas para referência de formatação e apresentação.
+Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo.
 
 {exemplos}
+
+Não inclua os exemplos {exemplos} na sua lista, eles são apenas para referência de formatação e apresentação do trecho que será processado.
 
 Agora processe o seguinte trecho:
 
