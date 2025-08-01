@@ -370,7 +370,7 @@ def aba_validacao_clausulas():
     with st.expander("Visualizar texto completo extraído do contrato"):
         st.text_area("Conteúdo extraído", texto, height=400)
 
-    if st.button("🧠 Extrair Cláusulas com IA"):
+    if st.button("✅ Extrair Cláusulas com IA"):
         df_clausulas = extrair_clausulas_robusto(texto)
         st.session_state["df_clausulas_extraidas"] = df_clausulas
         st.success("✅ Cláusulas extraídas com sucesso!")
