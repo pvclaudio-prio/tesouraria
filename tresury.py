@@ -456,7 +456,7 @@ def extrair_clausulas_robusto(texto):
             prompt = gerar_prompt_com_exemplos(chunk)
             try:
                 resposta = client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-5",
                     messages=[
                         {"role": "system", "content": "Você é um especialista jurídico com muita experiência e domínios em cláusulas de contratos de dívida."},
                         {"role": "user", "content": prompt}
@@ -568,7 +568,7 @@ Cláusula:
 \"\"\"{clausula}\"\"\"
 """
                     resposta_juridico = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5",
                         messages=[{"role": "user", "content": prompt_juridico}],
                         temperature=0,
                         max_tokens=1000
@@ -591,7 +591,7 @@ Cláusula:
 \"\"\"{clausula}\"\"\"
 """
                     resposta_financeiro = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5",
                         messages=[{"role": "user", "content": prompt_financeiro}],
                         temperature=0,
                         max_tokens=1000
@@ -614,7 +614,7 @@ Análise Financeira:
 {resposta_financeiro}
 """
                     resposta_supervisor = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-5",
                         messages=[{"role": "user", "content": prompt_supervisor}],
                         temperature=0,
                         max_tokens=1000
@@ -996,7 +996,7 @@ Cláusulas do contrato:
         client = OpenAI(api_key=st.secrets["openai"]["api_key"])
         with st.spinner("Gerando análise..."):
             resposta = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-5",
                 messages=[
                     {"role": "system", "content": "Você é um consultor jurídico especialista em contratos de captação de dívida internacionais."},
                     {"role": "user", "content": prompt}
