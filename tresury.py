@@ -417,9 +417,7 @@ def aba_validacao_clausulas():
 
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
-    paragrafos = texto.split("
-
-")
+    paragrafos = texto.split("")
     chunks = []
     atual = ""
 
