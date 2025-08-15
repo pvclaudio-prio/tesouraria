@@ -496,8 +496,7 @@ def extrair_clausulas_robusto(texto):
                     max_output_tokens=1800,
                     reasoning_effort="minimal",
                 )
-                linhas = [l.strip() for l in saida.split("
-") if l.strip()]
+                linhas = [l.strip() for l in saida.split("") if l.strip()]
                 clausulas_total.extend(linhas)
             except Exception as e:
                 clausulas_total.append(f"[Erro no chunk {i+1}]: {e}")
