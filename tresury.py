@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from io import BytesIO
 from pathlib import Path
 import plotly.express as px
@@ -16,18 +16,15 @@ import traceback
 import httpx
 from sentence_transformers import SentenceTransformer, util
 from openai import OpenAI
-import json
 import requests
 from difflib import get_close_matches
 import re
-from datetime import timedelta
 import matplotlib.pyplot as plt
 from docx import Document
 from docx.shared import Pt
 from pandas import Timestamp
 from google.cloud import documentai_v1 as documentai
 from google.oauth2 import service_account
-import openai
 import docx
 import uuid
 import openpyxl
@@ -37,8 +34,29 @@ from google.cloud import documentai_v1beta3 as documentai
 from PyPDF2 import PdfReader, PdfWriter
 import io
 
-st.set_page_config(layout = 'wide')
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+st.set_page_config(layout='wide')
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])  # ✅ OpenAI SDK v1.x
+
+# =========================
+# 🚀 Helper: GPT‑5 (Responses API)
+# =========================
+
+def gpt5(messages, *, temperature=0, max_output_tokens=1200, reasoning_effort="minimal") -> str:
+    """
+    Thin wrapper around the Responses API to call GPT‑5.
+    - `messages`: list of {"role": "system"|"user"|"assistant", "content": str}
+    - Uses `max_output_tokens` (not `max_tokens`) and `reasoning.effort`.
+    Returns the unified `output_text` field.
+    """
+    resp = client.responses.create(
+        model="gpt-5",
+        input=messages,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        reasoning={"effort": reasoning_effort},
+    )
+    # `output_text` is the simplest way to read text output from Responses API
+    return (getattr(resp, "output_text", "") or "").strip()
 
 # -----------------------------
 # Validação Usuários com st.secrets
@@ -51,7 +69,7 @@ def carregar_usuarios():
         try:
             nome, senha = dados.split("|", 1)
             usuarios[user] = {"name": nome, "password": senha}
-        except:
+        except Exception:
             st.warning(f"Erro ao carregar usuário '{user}' nos secrets.")
     return usuarios
 
@@ -110,6 +128,7 @@ pagina = st.sidebar.radio("Ir para:", [
 # =========================
 # Funções de conexão com o Google Drive
 # =========================
+
 def conectar_drive():
     cred_dict = st.secrets["credentials"]
 
@@ -130,6 +149,7 @@ def conectar_drive():
     gauth = GoogleAuth()
     gauth.credentials = credentials
     return GoogleDrive(gauth)
+
 
 def obter_id_pasta(nome_pasta, parent_id=None):
     drive = conectar_drive()
@@ -197,6 +217,7 @@ def aba_upload_contrato(user_email):
 
         st.success("✅ Contrato enviado e registrado com sucesso.")
 
+
 def carregar_base_contratos():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -223,6 +244,7 @@ def carregar_base_contratos():
         df["clausulas"] = df["clausulas"].astype(str)
 
     return df
+
 
 def salvar_base_contratos(df):
     drive = conectar_drive()
@@ -258,17 +280,20 @@ def salvar_base_contratos(df):
 # =========================
 # Manipulação de contratos
 # =========================
+
 def obter_contratos_disponiveis():
     drive = conectar_drive()
     pasta_id = obter_id_pasta("contratos", parent_id=obter_id_pasta("Tesouraria"))
     arquivos = drive.ListFile({'q': f"'{pasta_id}' in parents and trashed = false"}).GetList()
     return [(arq['title'], arq['id']) for arq in arquivos]
 
+
 def docx_para_pdf_temporario(caminho_docx):
     caminho_temp_dir = tempfile.mkdtemp()
     caminho_pdf = os.path.join(caminho_temp_dir, "convertido.pdf")
     convert(caminho_docx, caminho_pdf)
     return caminho_pdf
+
 
 def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
     from google.cloud import documentai_v1 as documentai
@@ -277,7 +302,7 @@ def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
     processor_id = st.secrets["gcp_docai"]["processor_id"]
     location = "us"
 
-    client = documentai.DocumentProcessorServiceClient(credentials=credentials)
+    client_docai = documentai.DocumentProcessorServiceClient(credentials=credentials)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     leitor = PdfReader(caminho_pdf)
@@ -296,10 +321,11 @@ def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
                 document = {"content": f.read(), "mime_type": "application/pdf"}
 
         request = {"name": name, "raw_document": document}
-        result = client.process_document(request=request)
+        result = client_docai.process_document(request=request)
         texto_total += result.document.text + "\n"
 
     return texto_total.strip()
+
 
 def executar_document_ai(caminho_pdf):
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
@@ -307,24 +333,21 @@ def executar_document_ai(caminho_pdf):
     location = "us"
     processor_id = st.secrets["gcp_docai"]["processor_id"]
 
-    client = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
+    client_docai = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     with open(caminho_pdf, "rb") as f:
         document = {"content": f.read(), "mime_type": "application/pdf"}
 
     request = {"name": name, "raw_document": document}
-    result = client.process_document(request=request)
+    result = client_docai.process_document(request=request)
     return result.document.text
 
 # =========================
-# Extração de cláusulas via IA
+# Extração de cláusulas via IA (GPT‑5)
 # =========================
 
 def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
-    """
-    Lê o arquivo armazenado no Google Drive (PDF) e extrai o texto completo via Document AI.
-    """
     drive = conectar_drive()
     caminho_temp = tempfile.NamedTemporaryFile(delete=False).name
     drive.CreateFile({'id': arquivo_id}).GetContentFile(caminho_temp)
@@ -333,7 +356,7 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
         if titulo_arquivo.lower().endswith(".docx"):
             caminho_pdf = docx_para_pdf_temporario(caminho_temp)
             texto = extrair_com_document_ai_paginas(caminho_pdf)
-            os.remove(caminho_pdf)  # limpa PDF temporário
+            os.remove(caminho_pdf)
         elif titulo_arquivo.lower().endswith(".pdf"):
             texto = extrair_com_document_ai_paginas(caminho_temp)
         else:
@@ -344,6 +367,7 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
         return ""
 
     return texto
+
 
 def aba_validacao_clausulas():
     st.title("🧾 Validação das Cláusulas Contratuais")
@@ -391,6 +415,7 @@ def aba_validacao_clausulas():
             else:
                 st.error("❌ Contrato não encontrado na base para atualização.")
 
+
 def dividir_em_chunks_simples(texto, max_chars=7000):
     paragrafos = texto.split("\n\n")
     chunks = []
@@ -406,6 +431,7 @@ def dividir_em_chunks_simples(texto, max_chars=7000):
         chunks.append(atual.strip())
 
     return chunks
+
 
 def gerar_prompt_com_exemplos(texto_chunk):
     exemplos = """
@@ -445,8 +471,8 @@ Agora processe o seguinte trecho:
 """
     return prompt.strip()
 
+
 def extrair_clausulas_robusto(texto):
-    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
     st.info("🔍 Analisando o contrato...")
     partes = dividir_em_chunks_simples(texto)
     clausulas_total = []
@@ -455,16 +481,15 @@ def extrair_clausulas_robusto(texto):
         with st.spinner(f"Analisando trecho {i+1}/{len(partes)}..."):
             prompt = gerar_prompt_com_exemplos(chunk)
             try:
-                resposta = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "Você é um especialista jurídico com muita experiência e domínios em cláusulas de contratos de dívida."},
-                        {"role": "user", "content": prompt}
+                saida = gpt5(
+                    [
+                        {"role": "system", "content": "Você é um especialista jurídico com muita experiência e domínio em cláusulas de contratos de dívida."},
+                        {"role": "user", "content": prompt},
                     ],
                     temperature=0,
-                    max_tokens=4096
+                    max_output_tokens=1800,
+                    reasoning_effort="minimal",
                 )
-                saida = resposta.choices[0].message.content.strip()
                 linhas = [l.strip() for l in saida.split("\n") if l.strip()]
                 clausulas_total.extend(linhas)
             except Exception as e:
@@ -476,27 +501,27 @@ def extrair_clausulas_robusto(texto):
 # =========================
 # Salvar cláusulas extraídas
 # =========================
+
 def salvar_clausulas_validadas(df_clausulas, id_contrato):
     df = carregar_base_contratos()
     if df.empty:
         return False
 
-    # Garante que cláusulas estejam como string
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
     clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
 
-    # Verifica se o contrato existe
     idx = df[df["id_contrato"] == id_contrato].index
     if len(idx) == 0:
         return False
 
-    # Atualiza a cláusula na linha existente
     df.loc[idx[0], "clausulas"] = clausulas_txt
     salvar_base_contratos(df)
     return True
+
 # =========================
-# 📌 Aba: Análise Automática das Cláusulas
+# 📌 Aba: Análise Automática das Cláusulas (GPT‑5)
 # =========================
+
 def carregar_clausulas_contratos():
     df = carregar_base_contratos()
     if df.empty:
@@ -517,6 +542,7 @@ def carregar_clausulas_contratos():
 
     return pd.DataFrame(clausulas_expandidas)
 
+
 def aba_analise_automatica():
     st.title("🧠 Análise Automática das Cláusulas")
 
@@ -526,11 +552,9 @@ def aba_analise_automatica():
     contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
     contrato_escolhido = st.selectbox("Selecione o contrato:", contratos_disponiveis)
 
-    # Verifica se há cláusulas validadas no contrato escolhido
     df_clausulas = df[df["nome_arquivo"] == contrato_escolhido].copy() if contrato_escolhido else pd.DataFrame()
     clausulas = [c.strip() for c in df_clausulas["clausula"].tolist() if c.strip()] if not df_clausulas.empty else []
 
-    # Botão para iniciar análise automática
     if clausulas:
         if st.button("✅ Iniciar Análise Automática"):
             drive = conectar_drive()
@@ -546,9 +570,8 @@ def aba_analise_automatica():
             arquivos[0].GetContentFile(caminho_indices)
             df_indices = pd.read_excel(caminho_indices)
 
-            client = OpenAI(api_key=st.secrets["openai"]["api_key"])
             resultados = []
-            st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro...")
+            st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro (GPT‑5)...")
 
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -556,7 +579,6 @@ def aba_analise_automatica():
             for i, clausula in enumerate(clausulas):
                 status_text.text(f"Processando cláusula {i+1}/{len(clausulas)}...")
                 with st.spinner():
-
                     # Agente Jurídico
                     prompt_juridico = f"""
 Você é um advogado especialista em contratos de dívida.
@@ -567,12 +589,12 @@ Justifique de forma objetiva com base jurídica.
 Cláusula:
 \"\"\"{clausula}\"\"\"
 """
-                    resposta_juridico = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_juridico}],
+                    resposta_juridico = gpt5(
+                        [{"role": "user", "content": prompt_juridico}],
                         temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                        max_output_tokens=800,
+                        reasoning_effort="minimal",
+                    )
 
                     # Agente Financeiro
                     texto_indices = df_indices.to_string(index=False)
@@ -583,24 +605,23 @@ Você é um especialista financeiro com foco em contratos de captação de dívi
 
 Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
 Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
-Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados
-índices financeiros para análise.
+Caso a cláusula não aborde nenhuma condicionante financeira, diga que está Conforme e no motivo informe objetivamente que não foram identificados índices financeiros para análise.
 Justifique com base nos dados da empresa e benchmarking de mercado para casos semelhantes.
 
 Cláusula:
 \"\"\"{clausula}\"\"\"
 """
-                    resposta_financeiro = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_financeiro}],
+                    resposta_financeiro = gpt5(
+                        [{"role": "user", "content": prompt_financeiro}],
                         temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                        max_output_tokens=800,
+                        reasoning_effort="minimal",
+                    )
 
                     # Agente Supervisor
                     prompt_supervisor = f"""
-Você é o supervisor responsável pela revisão final. 
-Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
+Você é o supervisor responsável pela revisão final.
+Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro.
 Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente o motivo.
 Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
 
@@ -613,12 +634,12 @@ Análise Jurídica:
 Análise Financeira:
 {resposta_financeiro}
 """
-                    resposta_supervisor = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_supervisor}],
+                    resposta_supervisor = gpt5(
+                        [{"role": "user", "content": prompt_supervisor}],
                         temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                        max_output_tokens=800,
+                        reasoning_effort="minimal",
+                    )
 
                     resultados.append({
                         "nome_arquivo": contrato_escolhido,
@@ -640,7 +661,7 @@ Análise Financeira:
     else:
         st.warning("Não há cláusulas validadas disponíveis.")
 
-    # 🔁 Exibir resultado atual e botões (prioridade: resultado novo)
+    # Resultado atual
     if "analise_automatica_resultado" in st.session_state:
         df_resultado = st.session_state["analise_automatica_resultado"]
         st.dataframe(df_resultado, use_container_width=True)
@@ -659,7 +680,6 @@ Análise Financeira:
             st.success("✅ Revisão final do usuário salva com sucesso!")
             del st.session_state["analise_automatica_resultado"]
 
-    # 🔁 Exibir análise antiga apenas se não houver análise nova
     elif df_contrato is not None and not df_contrato.empty:
         df_contrato = df_contrato[df_contrato["nome_arquivo"] == contrato_escolhido]
         if not df_contrato.empty:
@@ -672,7 +692,7 @@ Análise Financeira:
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                key="download_anterior")
 
-    
+
 def carregar_clausulas_analisadas():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -695,6 +715,7 @@ def carregar_clausulas_analisadas():
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
 
+
 def salvar_clausulas_validadas_usuario(df_novo):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -703,7 +724,6 @@ def salvar_clausulas_validadas_usuario(df_novo):
     nome_arquivo = "clausulas_analisadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
 
-    # Carregar base existente, se houver
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
@@ -713,18 +733,15 @@ def salvar_clausulas_validadas_usuario(df_novo):
         arquivos[0].GetContentFile(caminho_antigo)
         df_existente = pd.read_excel(caminho_antigo)
 
-        # Remove as cláusulas do contrato atual
         contrato_atual = df_novo["nome_arquivo"].iloc[0]
         df_existente = df_existente[df_existente["nome_arquivo"] != contrato_atual]
 
-        # Concatena com as novas
         df_final = pd.concat([df_existente, df_novo], ignore_index=True)
     else:
         df_final = df_novo
 
     df_final.to_excel(caminho_temp, index=False)
 
-    # Salvar no Drive
     if arquivos:
         arquivo = arquivos[0]
     else:
@@ -736,7 +753,6 @@ def salvar_clausulas_validadas_usuario(df_novo):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # Backup
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = drive.CreateFile({
         'title': f'clausulas_analisadas__{timestamp}.xlsx',
@@ -744,6 +760,7 @@ def salvar_clausulas_validadas_usuario(df_novo):
     })
     backup.SetContentFile(caminho_temp)
     backup.Upload()
+
 
 def carregar_clausulas_validadas():
     drive = conectar_drive()
@@ -767,14 +784,14 @@ def carregar_clausulas_validadas():
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
     arquivos[0].GetContentFile(caminho_temp)
     return pd.read_excel(caminho_temp)
-    
+
 # =========================
 # 📌 Aba: Revisão Final
 # =========================
 
 def aba_revisao_final():
     st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
-    
+
     df = carregar_clausulas_validadas()
     with st.spinner("Carregando cláusulas analisadas..."):
         df = carregar_clausulas_analisadas()
@@ -788,7 +805,6 @@ def aba_revisao_final():
 
     st.markdown("### 📝 Revisão Final do Usuário")
 
-    # Inicializar colunas editáveis, se necessário
     for col in ["user_revisao", "motivo_user"]:
         if col not in df_filtrado.columns:
             df_filtrado[col] = ""
@@ -817,11 +833,12 @@ def aba_revisao_final():
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_editado.to_excel(writer, index=False)
     st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-   
+
     if st.button("✅ Salvar revisão final do usuário"):
         salvar_clausulas_revisadas_usuario(df_editado)
         st.success("✅ Revisão final do usuário salva com sucesso!")
-        
+
+
 def salvar_clausulas_revisadas_usuario(df_novo):
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -830,7 +847,6 @@ def salvar_clausulas_revisadas_usuario(df_novo):
     nome_arquivo = "clausulas_validadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
 
-    # Carregar base existente, se houver
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
@@ -840,18 +856,15 @@ def salvar_clausulas_revisadas_usuario(df_novo):
         arquivos[0].GetContentFile(caminho_antigo)
         df_existente = pd.read_excel(caminho_antigo)
 
-        # Remove cláusulas do contrato atual
         contrato_atual = df_novo["nome_arquivo"].iloc[0]
         df_existente = df_existente[df_existente["nome_arquivo"] != contrato_atual]
 
-        # Concatena com as novas cláusulas revisadas
         df_final = pd.concat([df_existente, df_novo], ignore_index=True)
     else:
         df_final = df_novo
 
     df_final.to_excel(caminho_temp, index=False)
 
-    # Salvar no Drive
     if arquivos:
         arquivo = arquivos[0]
     else:
@@ -863,7 +876,6 @@ def salvar_clausulas_revisadas_usuario(df_novo):
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
-    # Backup com timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = drive.CreateFile({
         'title': f'clausulas_validadas__{timestamp}.xlsx',
@@ -871,29 +883,6 @@ def salvar_clausulas_revisadas_usuario(df_novo):
     })
     backup.SetContentFile(caminho_temp)
     backup.Upload()
-
-def carregar_clausulas_validadas():
-    drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-
-    arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_validadas.xlsx' and trashed = false"
-    }).GetList()
-
-    if not arquivos:
-        st.warning("❌ Base de cláusulas validadas não encontrada.")
-        return pd.DataFrame(columns=[
-            "nome_arquivo", "clausula",
-            "analise_juridico_status", "analise_juridico_motivo",
-            "analise_financeiro_status", "analise_financeiro_motivo",
-            "revisao_juridico_status", "revisao_juridico_motivo",
-            "revisao_financeiro_status", "revisao_financeiro_motivo",
-            "user_revisao", "motivo_user"
-        ])
-
-    caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
-    arquivos[0].GetContentFile(caminho_temp)
-    return pd.read_excel(caminho_temp)
 
 # =========================
 # 📌 Aba: Índices PRIO
@@ -908,7 +897,6 @@ def aba_indices_prio():
 
     nome_arquivo = "empresa_referencia_PRIO.xlsx"
 
-    # Verificar se o arquivo existe no Drive
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
@@ -933,7 +921,6 @@ def aba_indices_prio():
         caminho_temp_salvar = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         df_editado.to_excel(caminho_temp_salvar, index=False)
 
-        # Atualizar ou criar o arquivo no Drive
         if arquivos:
             arquivo = arquivos[0]
         else:
@@ -945,7 +932,6 @@ def aba_indices_prio():
         arquivo.SetContentFile(caminho_temp_salvar)
         arquivo.Upload()
 
-        # Criar backup
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup = drive.CreateFile({
             'title': f"empresa_referencia_PRIO__{timestamp}.xlsx",
@@ -957,7 +943,7 @@ def aba_indices_prio():
         st.success("✅ Índices salvos e backup criado com sucesso!")
 
 # =========================
-# 📌 Aba: Relatório Gerencial
+# 📌 Aba: Relatório Gerencial (GPT‑5)
 # =========================
 
 def aba_relatorios_gerenciais():
@@ -993,23 +979,20 @@ Cláusulas do contrato:
 \"\"\"{texto_clausulas}\"\"\"
 """
 
-        client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-        with st.spinner("Gerando análise..."):
-            resposta = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
+        with st.spinner("Gerando análise (GPT‑5)..."):
+            analise_final = gpt5(
+                [
                     {"role": "system", "content": "Você é um consultor jurídico especialista em contratos de captação de dívida internacionais."},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0,
-                max_tokens=2048
+                max_output_tokens=1800,
+                reasoning_effort="minimal",
             )
 
-        analise_final = resposta.choices[0].message.content.strip()
         st.markdown("### ✅ Análise Gerada:")
         st.markdown(analise_final)
 
-        # Exportação em Word
         buffer = BytesIO()
         doc = Document()
         doc.add_heading(f"Relatório Gerencial - {contrato_selecionado}", level=1)
@@ -1029,18 +1012,18 @@ Cláusulas do contrato:
 # -----------------------------
 if pagina == "📂 Upload do Contrato":
     aba_upload_contrato(user_email=st.session_state.username)
-    
+
 elif pagina == "🧾 Validação das Cláusulas":
     aba_validacao_clausulas()
-    
+
 elif pagina == "🔍 Análise Automática":
     aba_analise_automatica()
-    
+
 elif pagina == "🧑‍⚖️ Revisão Final":
     aba_revisao_final()
-    
+
 elif pagina == "📊 Índices PRIO":
     aba_indices_prio()
-    
+
 elif pagina == "📘 Relatórios Gerenciais":
     aba_relatorios_gerenciais()
