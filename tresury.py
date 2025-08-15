@@ -971,9 +971,7 @@ def aba_relatorios_gerenciais():
     if st.button("✅ Executar análise"):
         clausulas_contrato = df[df["nome_arquivo"] == contrato_selecionado]["clausula"].tolist()
 
-        texto_clausulas = "
-
-".join(clausulas_contrato)
+        texto_clausulas = "".join(clausulas_contrato)
         prompt = f"""
 Você é um especialista jurídico em gestão contratual e compliance.
 
