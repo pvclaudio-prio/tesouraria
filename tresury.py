@@ -516,8 +516,7 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato):
         return False
 
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
-    clausulas_txt = "
-".join(df_clausulas["clausula"].tolist())
+    clausulas_txt = "".join(df_clausulas["clausula"].tolist())
 
     idx = df[df["id_contrato"] == id_contrato].index
     if len(idx) == 0:
