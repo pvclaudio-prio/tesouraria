@@ -1004,8 +1004,7 @@ Cláusulas do contrato:
         buffer = BytesIO()
         doc = Document()
         doc.add_heading(f"Relatório Gerencial - {contrato_selecionado}", level=1)
-        for par in analise_final.split("
-"):
+        for par in analise_final.split(""):
             if par.strip():
                 doc.add_paragraph(par.strip())
         doc.save(buffer)
