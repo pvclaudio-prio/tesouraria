@@ -541,8 +541,7 @@ def carregar_clausulas_contratos():
         texto = row.get("clausulas", "")
         if not isinstance(texto, str) or not texto.strip():
             continue
-        clausulas = [c.strip() for c in texto.split("
-") if c.strip()]
+        clausulas = [c.strip() for c in texto.split("") if c.strip()]
         for c in clausulas:
             clausulas_expandidas.append({
                 "nome_arquivo": row["nome_arquivo"],
