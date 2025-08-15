@@ -423,14 +423,10 @@ def dividir_em_chunks_simples(texto, max_chars=7000):
 
     for p in paragrafos:
         if len(atual) + len(p) + 2 <= max_chars:
-            atual += p + "
-
-"
+            atual += p + ""
         else:
             chunks.append(atual.strip())
-            atual = p + "
-
-"
+            atual = p + ""
     if atual:
         chunks.append(atual.strip())
 
