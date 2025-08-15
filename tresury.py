@@ -23,19 +23,21 @@ import matplotlib.pyplot as plt
 from docx import Document
 from docx.shared import Pt
 from pandas import Timestamp
-from google.cloud import documentai_v1 as documentai
+from google.cloud import documentai_v1 as docai_v1
+from google.cloud import documentai_v1beta3 as docai_v1beta3
 from google.oauth2 import service_account
 import docx
 import uuid
 import openpyxl
 import time
 from docx2pdf import convert
-from google.cloud import documentai_v1beta3 as documentai
 from PyPDF2 import PdfReader, PdfWriter
 import io
 
 st.set_page_config(layout='wide')
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])  # ✅ OpenAI SDK v1.x
+
+# ✅ Cliente oficial OpenAI (Responses API)
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 # =========================
 # 🚀 Helper: GPT‑5 (Responses API)
@@ -43,10 +45,10 @@ client = OpenAI(api_key=st.secrets["openai"]["api_key"])  # ✅ OpenAI SDK v1.x
 
 def gpt5(messages, *, temperature=0, max_output_tokens=1200, reasoning_effort="minimal") -> str:
     """
-    Thin wrapper around the Responses API to call GPT‑5.
-    - `messages`: list of {"role": "system"|"user"|"assistant", "content": str}
-    - Uses `max_output_tokens` (not `max_tokens`) and `reasoning.effort`.
-    Returns the unified `output_text` field.
+    Wrapper do Responses API para chamar o GPT‑5.
+    - `messages`: lista de {"role": "system"|"user"|"assistant", "content": str}
+    - usa `max_output_tokens` e `reasoning={"effort": ...}`
+    Retorna `output_text`.
     """
     resp = client.responses.create(
         model="gpt-5",
@@ -55,7 +57,6 @@ def gpt5(messages, *, temperature=0, max_output_tokens=1200, reasoning_effort="m
         max_output_tokens=max_output_tokens,
         reasoning={"effort": reasoning_effort},
     )
-    # `output_text` is the simplest way to read text output from Responses API
     return (getattr(resp, "output_text", "") or "").strip()
 
 # -----------------------------
@@ -75,7 +76,7 @@ def carregar_usuarios():
 
 users = carregar_usuarios()
 
-# Inicializa variáveis de sessão
+# Estado de sessão
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.username = ""
@@ -239,7 +240,6 @@ def carregar_base_contratos():
     arquivos[0].GetContentFile(caminho_temp)
     df = pd.read_excel(caminho_temp)
 
-    # Garantir que a coluna de cláusulas seja tratada como string
     if "clausulas" in df.columns:
         df["clausulas"] = df["clausulas"].astype(str)
 
@@ -296,13 +296,12 @@ def docx_para_pdf_temporario(caminho_docx):
 
 
 def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
-    from google.cloud import documentai_v1 as documentai
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
     project_id = st.secrets["gcp_docai"]["project_id"]
     processor_id = st.secrets["gcp_docai"]["processor_id"]
     location = "us"
 
-    client_docai = documentai.DocumentProcessorServiceClient(credentials=credentials)
+    client_docai = docai_v1.DocumentProcessorServiceClient(credentials=credentials)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     leitor = PdfReader(caminho_pdf)
@@ -322,18 +321,20 @@ def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
 
         request = {"name": name, "raw_document": document}
         result = client_docai.process_document(request=request)
-        texto_total += result.document.text + "\n"
+        texto_total += result.document.text + "
+"
 
     return texto_total.strip()
 
 
 def executar_document_ai(caminho_pdf):
+    # Mantido por compatibilidade (se necessário em algum fluxo legado)
     credentials = service_account.Credentials.from_service_account_info(st.secrets["gcp_docai"])
     project_id = st.secrets["gcp_docai"]["project_id"]
     location = "us"
     processor_id = st.secrets["gcp_docai"]["processor_id"]
 
-    client_docai = documentai.DocumentUnderstandingServiceClient(credentials=credentials)
+    client_docai = docai_v1beta3.DocumentUnderstandingServiceClient(credentials=credentials)
     name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
 
     with open(caminho_pdf, "rb") as f:
@@ -417,16 +418,22 @@ def aba_validacao_clausulas():
 
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
-    paragrafos = texto.split("\n\n")
+    paragrafos = texto.split("
+
+")
     chunks = []
     atual = ""
 
     for p in paragrafos:
         if len(atual) + len(p) + 2 <= max_chars:
-            atual += p + "\n\n"
+            atual += p + "
+
+"
         else:
             chunks.append(atual.strip())
-            atual = p + "\n\n"
+            atual = p + "
+
+"
     if atual:
         chunks.append(atual.strip())
 
@@ -461,7 +468,7 @@ Não inclua o seguinte:
 - Numeração (1., 2., 3.1, etc.)
 - Título da cláusula (se houver)
 
-Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo.
+Não inclua resumos nem comentários. Apresente a lista no mesmo formato dos exemplos abaixo.
 
 {exemplos}
 
@@ -477,8 +484,14 @@ def extrair_clausulas_robusto(texto):
     partes = dividir_em_chunks_simples(texto)
     clausulas_total = []
 
+    # ✅ Barra de progresso durante a extração
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    total = max(len(partes), 1)
     for i, chunk in enumerate(partes):
-        with st.spinner(f"Analisando trecho {i+1}/{len(partes)}..."):
+        status_text.text(f"Analisando trecho {i+1}/{total}...")
+        with st.spinner(f"Processando IA no trecho {i+1}/{total}..."):
             prompt = gerar_prompt_com_exemplos(chunk)
             try:
                 saida = gpt5(
@@ -490,11 +503,14 @@ def extrair_clausulas_robusto(texto):
                     max_output_tokens=1800,
                     reasoning_effort="minimal",
                 )
-                linhas = [l.strip() for l in saida.split("\n") if l.strip()]
+                linhas = [l.strip() for l in saida.split("
+") if l.strip()]
                 clausulas_total.extend(linhas)
             except Exception as e:
                 clausulas_total.append(f"[Erro no chunk {i+1}]: {e}")
+        progress_bar.progress((i + 1) / total)
 
+    status_text.text("")
     df = pd.DataFrame(clausulas_total, columns=["clausula"])
     return df
 
@@ -508,7 +524,8 @@ def salvar_clausulas_validadas(df_clausulas, id_contrato):
         return False
 
     df_clausulas["clausula"] = df_clausulas["clausula"].astype(str)
-    clausulas_txt = "\n".join(df_clausulas["clausula"].tolist())
+    clausulas_txt = "
+".join(df_clausulas["clausula"].tolist())
 
     idx = df[df["id_contrato"] == id_contrato].index
     if len(idx) == 0:
@@ -533,7 +550,8 @@ def carregar_clausulas_contratos():
         texto = row.get("clausulas", "")
         if not isinstance(texto, str) or not texto.strip():
             continue
-        clausulas = [c.strip() for c in texto.split("\n") if c.strip()]
+        clausulas = [c.strip() for c in texto.split("
+") if c.strip()]
         for c in clausulas:
             clausulas_expandidas.append({
                 "nome_arquivo": row["nome_arquivo"],
@@ -963,7 +981,9 @@ def aba_relatorios_gerenciais():
     if st.button("✅ Executar análise"):
         clausulas_contrato = df[df["nome_arquivo"] == contrato_selecionado]["clausula"].tolist()
 
-        texto_clausulas = "\n\n".join(clausulas_contrato)
+        texto_clausulas = "
+
+".join(clausulas_contrato)
         prompt = f"""
 Você é um especialista jurídico em gestão contratual e compliance.
 
@@ -996,7 +1016,8 @@ Cláusulas do contrato:
         buffer = BytesIO()
         doc = Document()
         doc.add_heading(f"Relatório Gerencial - {contrato_selecionado}", level=1)
-        for par in analise_final.split("\n"):
+        for par in analise_final.split("
+"):
             if par.strip():
                 doc.add_paragraph(par.strip())
         doc.save(buffer)
