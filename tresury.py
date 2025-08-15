@@ -321,8 +321,7 @@ def extrair_com_document_ai_paginas(caminho_pdf, max_paginas=15):
 
         request = {"name": name, "raw_document": document}
         result = client_docai.process_document(request=request)
-        texto_total += result.document.text + "
-"
+        texto_total += result.document.text + ""
 
     return texto_total.strip()
 
