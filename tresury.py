@@ -370,9 +370,6 @@ def aba_validacao_clausulas():
         st.session_state.pop("texto_contrato", None)
         st.session_state.pop("df_clausulas_extraidas", None)
 
-    st.markdown("###Ler o conteúdo do contrato")
-    st.caption("A leitura (Document AI) só começa quando você clicar no botão abaixo.")
-
     # Botão para iniciar a leitura do contrato (NÃO roda automaticamente)
     if st.button("▶️ Iniciar leitura do contrato"):
         with st.spinner("Lendo e extraindo texto do contrato..."):
