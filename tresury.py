@@ -364,17 +364,40 @@ def aba_validacao_clausulas():
     # Extrai id_contrato do nome do arquivo (antes do primeiro "_")
     id_contrato = titulo_arquivo.split("_")[0]
 
-    st.markdown("### 📄 Visualização do conteúdo do contrato")
-    texto = carregar_texto_contrato_drive(titulo_arquivo, id_arquivo)
+    # Se o contrato mudar, limpa estados anteriores para evitar reprocessos
+    if st.session_state.get("contrato_validacao") != id_contrato:
+        st.session_state["contrato_validacao"] = id_contrato
+        st.session_state.pop("texto_contrato", None)
+        st.session_state.pop("df_clausulas_extraidas", None)
 
-    with st.expander("Visualizar texto completo extraído do contrato"):
-        st.text_area("Conteúdo extraído", texto, height=400)
+    st.markdown("### ▶️ Passo 1 — Ler o conteúdo do contrato")
+    st.caption("A leitura (Document AI) só começa quando você clicar no botão abaixo.")
 
-    if st.button("✅ Extrair Cláusulas com IA"):
-        df_clausulas = extrair_clausulas_robusto(texto)
-        st.session_state["df_clausulas_extraidas"] = df_clausulas
-        st.success("✅ Cláusulas extraídas com sucesso!")
+    # Botão para iniciar a leitura do contrato (NÃO roda automaticamente)
+    if st.button("▶️ Iniciar leitura do contrato"):
+        with st.spinner("Lendo e extraindo texto do contrato..."):
+            texto = carregar_texto_contrato_drive(titulo_arquivo, id_arquivo)
+            st.session_state["texto_contrato"] = texto
+        if st.session_state.get("texto_contrato"):
+            st.success("✅ Texto do contrato carregado com sucesso.")
 
+    # Exibe o texto apenas se já tiver sido carregado
+    if "texto_contrato" in st.session_state and st.session_state["texto_contrato"]:
+        st.markdown("### 📄 Visualização do conteúdo do contrato")
+        with st.expander("Visualizar texto completo extraído do contrato"):
+            st.text_area("Conteúdo extraído", st.session_state["texto_contrato"], height=400)
+
+        st.markdown("### 🧠 Passo 2 — Extrair cláusulas com IA")
+        if st.button("✅ Extrair Cláusulas com IA"):
+            with st.spinner("Extraindo cláusulas do contrato..."):
+                df_clausulas = extrair_clausulas_robusto(st.session_state["texto_contrato"])
+                st.session_state["df_clausulas_extraidas"] = df_clausulas
+            st.success("✅ Cláusulas extraídas com sucesso!")
+
+    else:
+        st.info("Clique em **‘▶️ Iniciar leitura do contrato’** para carregar o texto antes de extrair as cláusulas.")
+
+    # Edição e validação só aparecem após a extração das cláusulas
     if "df_clausulas_extraidas" in st.session_state:
         st.markdown("### ✍️ Revisar Cláusulas Extraídas")
         df_editado = st.data_editor(
@@ -390,6 +413,7 @@ def aba_validacao_clausulas():
                 st.success("📦 Cláusulas validadas e salvas com sucesso.")
             else:
                 st.error("❌ Contrato não encontrado na base para atualização.")
+
 
 def dividir_em_chunks_simples(texto, max_chars=7000):
     paragrafos = texto.split("\n\n")
