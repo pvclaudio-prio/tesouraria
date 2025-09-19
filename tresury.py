@@ -37,7 +37,12 @@ from google.cloud import documentai_v1beta3 as documentai
 from PyPDF2 import PdfReader, PdfWriter
 import io
 
-st.set_page_config(layout = 'wide')
+st.set_page_config(
+    page_title="Revisão de Contratos - PRIO",
+    page_icon="📝",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 # -----------------------------
