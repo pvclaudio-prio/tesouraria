@@ -433,67 +433,39 @@ def dividir_em_chunks_simples(texto, max_chars=7000):
 
     return chunks
 
-def gerar_prompt_com_exemplos(texto_chunk: str) -> str:
-    # Lista de rótulos padronizados (ajuste livremente)
-    rotulos = [
-        "Definições",
-        "Objeto/Operação/Empréstimo",
-        "Disponibilidade/Prazo",
-        "Notificação/Drawdown",
-        "Juros/Encargos",
-        "Cálculo de Juros/Benchmark",
-        "Pagamentos/Aplicação",
-        "Atraso/Default Interest",
-        "Prepagamento",
-        "Finalidade/Use of Proceeds",
-        "Registros/Banco Central",
-        "Declarações e Garantias",
-        "Covenants Positivos",
-        "Covenants Negativos",
-        "Sanções/Compliance",
-        "Impostos/Withholding",
-        "Moeda/U.S. Dollar Currency",
-        "Indenização/Breakfunding/Costs",
-        "Eventos de Inadimplemento",
-        "Vencimento Antecipado/Remédios",
-        "Honorários/Despesas",
-        "Cessão/Participações",
-        "Confidencialidade",
-        "Lei Aplicável",
-        "Foro/Jurisdição/Process Agent",
-        "Miscelânea"
-    ]
+def gerar_prompt_com_exemplos(texto_chunk):
+    exemplos = """
+Exemplos de cláusulas extraídas corretamente:
 
-    esquema = {
-        "texto": "cláusula transcrita integralmente, sem número e sem título",
-        "rotulo": "um entre os rótulos padronizados acima",
-        "secao_titulo": "título da seção/cabeçalho se detectado (sem número)",
-        "secao_numero": "número da seção ex: 2.4, 3.1, 10.7 (se detectado)",
-        "observacoes": "campo opcional para pequenos metadados (ex: 'Term SOFR', 'SCE-Crédito')"
-    }
+The Lender agrees, subject to the terms and conditions hereof, to make available to the Borrower the Loan, in one disbursement during the Availability Period upon receipt of a Drawdown Request from the Borrower not later than the Specified Time.
+
+The Borrower shall treat the proceeds of the Loan as a recebimento antecipado de exportação in accordance with the regulations issued by the Central Bank of Brazil. Promptly upon the receipt of the Loan, the Borrower shall enter into an appropriate foreign exchange transaction in order to convert the amount of the Loan proceeds from U.S. Dollars into Brazilian currency (reais) in accordance with the regulations of the Central Bank of Brazil.
+
+The Borrower agrees to contract, execute and perform all of the foreign exchange transactions entered into in connection with this Agreement exclusively with the Lender.
+
+The Borrower shall keep all copies of the shipping documents with respect to the respective export transaction, including documents conveying title to the Goods; the bill(s) of lading; the commercial invoice(s); and any other document which the Lender may reasonably request to attest the shipment of the Goods in a manner consistent with commercial export transactions.
+
+Any Loan amounts which, at that time, are unutilized shall be immediately cancelled at the end of the Availability Period.
+
+"""
 
     prompt = f"""
-Você é um advogado especializado em contratos de crédito internacional. Extraia TODAS as cláusulas do trecho abaixo, com alta precisão, obedecendo rigorosamente:
+Você é um advogado especializado em contratos de crédito internacional.
 
-REGRAS:
-- Transcreva o TEXTO da cláusula EXATAMENTE como aparece no trecho, mas REMOVA numeração e títulos.
-- Não resuma, não reescreva, não corrija gramática: mantenha o texto original da cláusula.
-- Quando a cláusula tiver várias frases, mantenha tudo junto como uma única cláusula se fizer parte do mesmo item.
-- Identifique a que seção pertence e, se possível, o número (ex.: 2.4, 3.1). Não invente números.
-- Classifique cada cláusula em UM rótulo da lista abaixo.
-- Não inclua quaisquer exemplos, comentários, desculpas ou explicações.
-- SAÍDA ESTRITAMENTE EM JSONL: um objeto JSON por linha, sem cercas de código.
-- Não escreva nada além de linhas JSON.
-- NÃO REPITA texto que não esteja no trecho. NÃO copie exemplos hipotéticos.
-- Se não houver cláusulas válidas no trecho, não retorne nada.
+Extraia todas as cláusulas do texto a seguir. Cada cláusula deve conter apenas:
 
-RÓTULOS PERMITIDOS:
-{rotulos}
+- Texto completo da cláusula
 
-ESQUEMA JSON (campos obrigatórios):
-{esquema}
+Não inclua o seguinte:
 
-Agora processe o trecho entre aspas triplas:
+- Numeração (1., 2., 3.1, etc.)
+- Título da cláusula (se houver)
+
+Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo.
+
+{exemplos}
+
+Agora processe o seguinte trecho:
 
 \"\"\"{texto_chunk}\"\"\"
 """
