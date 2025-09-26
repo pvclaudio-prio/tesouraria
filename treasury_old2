@@ -797,68 +797,141 @@ def carregar_clausulas_validadas():
 # =========================
 # 📌 Aba: Revisão Final
 # =========================
+# ---------------------------------------------
+# Opções do usuário
+USER_REVISAO_OPCOES = ["Concordo", "Discordo", "Melhoria"]
+# ---------------------------------------------
 
 def aba_revisao_final():
     st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
-    
-    df = carregar_clausulas_validadas()
+
+    # CSS leve para quebrar linhas e permitir alturas maiores
+    st.markdown("""
+        <style>
+        /* permite quebra de linha dentro das células de texto */
+        .stDataFrame td, .stDataFrame div, .stDataEditor td, .stDataEditor div {
+            white-space: normal !important;
+        }
+        /* evita cortes nas células */
+        .stDataEditor [data-testid="stVerticalBlock"] { overflow: visible !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
     with st.spinner("Carregando cláusulas analisadas..."):
         df = carregar_clausulas_analisadas()
-    if df.empty:
+    if df is None or df.empty:
         st.warning("Nenhuma cláusula analisada disponível.")
+        return
 
-    contratos_disponiveis = df["nome_arquivo"].unique().tolist()
+    contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
     contrato = st.selectbox("Selecione o contrato:", contratos_disponiveis)
+    if not contrato:
+        return
 
     df_filtrado = df[df["nome_arquivo"] == contrato].copy()
 
     st.markdown("### 📝 Revisão Final do Usuário")
 
-    # Inicializar colunas editáveis, se necessário
+    # Garante colunas editáveis
     for col in ["user_revisao", "motivo_user"]:
         if col not in df_filtrado.columns:
             df_filtrado[col] = ""
 
-    df_editado = st.data_editor(
-        df_filtrado,
-        use_container_width=True,
-        num_rows="dynamic",
-        column_order=[
-            "clausula",
-            "revisao_juridico", "motivo_juridico",
-            "revisao_financeiro", "motivo_financeiro",
-            "revisao_sup", "motivo_sup",
-            "user_revisao", "motivo_user"
-        ],
-        disabled=[
-            "nome_arquivo", "clausula",
-            "revisao_juridico", "motivo_juridico",
-            "revisao_financeiro", "motivo_financeiro",
-            "revisao_sup", "motivo_sup"
-        ],
-        key="revisao_final_editor"
-    )
+    # Ordenação/visibilidade das colunas
+    colunas_ordem = [
+        "clausula",
+        "revisao_juridico", "motivo_juridico",
+        "revisao_financeiro", "motivo_financeiro",
+        "revisao_sup", "motivo_sup",
+        "user_revisao", "motivo_user",
+        "nome_arquivo",  # mantida para salvar, mas escondida
+    ]
+    colunas_ordem = [c for c in colunas_ordem if c in df_filtrado.columns]
 
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        df_editado.to_excel(writer, index=False)
-    st.download_button("📥 Baixar Análises", data=buffer.getvalue(), file_name="clausulas_validadas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-   
-    if st.button("✅ Salvar revisão final do usuário"):
-        salvar_clausulas_revisadas_usuario(df_editado)
-        st.success("✅ Revisão final do usuário salva com sucesso!")
-        
-def salvar_clausulas_revisadas_usuario(df_novo):
+    # Configuração de colunas (tipos, selects, larguras)
+    col_cfg = {
+        "clausula": st.column_config.TextColumn("Cláusula", width="large"),
+        "motivo_juridico": st.column_config.TextColumn("Motivo Jurídico", width="large"),
+        "motivo_financeiro": st.column_config.TextColumn("Motivo Financeiro", width="large"),
+        "motivo_sup": st.column_config.TextColumn("Motivo Supervisor", width="large"),
+        "user_revisao": st.column_config.SelectboxColumn(
+            "Revisão do Usuário",
+            options=USER_REVISAO_OPCOES,
+            help="Selecione sua revisão para a cláusula"
+        ),
+        "motivo_user": st.column_config.TextColumn(
+            "Motivo (usuário)",
+            help="Explique de forma objetiva sua concordância/discordância ou sugestão de melhoria",
+            width="large"
+        ),
+        "nome_arquivo": st.column_config.TextColumn("Contrato (interno)"),
+        "revisao_juridico": st.column_config.TextColumn("Revisão Jurídica"),
+        "revisao_financeiro": st.column_config.TextColumn("Revisão Financeira"),
+        "revisao_sup": st.column_config.TextColumn("Revisão Supervisor"),
+    }
+
+    # Desabilita colunas não-editáveis
+    desabilitadas = [c for c in df_filtrado.columns if c not in ["user_revisao", "motivo_user"]]
+
+    # Altura “inteligente” da grade (até 15 linhas sem scroll)
+    linhas = len(df_filtrado)
+    altura = min(700, 56 + 40 * min(15, linhas))
+
+    with st.form("form_revisao_final", clear_on_submit=False):
+        df_editado = st.data_editor(
+            df_filtrado,
+            column_config=col_cfg,
+            column_order=colunas_ordem,
+            disabled=desabilitadas,
+            hide_index=True,
+            num_rows="fixed",              # não deixa adicionar/remover linhas
+            use_container_width=True,
+            height=altura,
+            key="revisao_final_editor"
+        )
+
+        col_a, col_b = st.columns([1, 2])
+        salvar_click = col_a.form_submit_button("✅ Salvar revisão final do usuário", use_container_width=True)
+        baixar_click = col_b.form_submit_button("⬇️ Baixar análises (.xlsx)", use_container_width=True)
+
+    # Pós-submit: DOWNLOAD
+    if baixar_click:
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_editado.to_excel(writer, index=False)
+        st.download_button(
+            "📥 Clique para baixar",
+            data=buffer.getvalue(),
+            file_name="clausulas_validadas.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+    # Pós-submit: SALVAR
+    if salvar_click:
+        try:
+            salvar_clausulas_revisadas_usuario(df_editado)
+            st.success("✅ Revisão final do usuário salva com sucesso!")
+        except Exception as e:
+            st.error(f"Falha ao salvar no Drive: {e}")
+
+    st.caption(f"A base possui **{linhas}** cláusulas para o contrato selecionado.")
+
+# --------------------------------------------------------------------
+# Mantém sua lógica de persistência no Drive (com pequenos reforços)
+# --------------------------------------------------------------------
+def salvar_clausulas_revisadas_usuario(df_novo: pd.DataFrame):
     drive = conectar_drive()
-    pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
-    pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
+    pasta_tesouraria_id = obter_id_pasta("Tesouraria")
+    pasta_bases_id = obter_id_pasta("bases", parent_id=pasta_tesouraria_id)
+    pasta_backups_id = obter_id_pasta("backups", parent_id=pasta_tesouraria_id)
 
     nome_arquivo = "clausulas_validadas.xlsx"
     caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
 
-    # Carregar base existente, se houver
+    # Carrega base existente (se houver)
     arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
+        "q": f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
 
     if arquivos:
@@ -866,54 +939,52 @@ def salvar_clausulas_revisadas_usuario(df_novo):
         arquivos[0].GetContentFile(caminho_antigo)
         df_existente = pd.read_excel(caminho_antigo)
 
-        # Remove cláusulas do contrato atual
+        # Remove as linhas do contrato atual para substituí-las
         contrato_atual = df_novo["nome_arquivo"].iloc[0]
         df_existente = df_existente[df_existente["nome_arquivo"] != contrato_atual]
 
-        # Concatena com as novas cláusulas revisadas
         df_final = pd.concat([df_existente, df_novo], ignore_index=True)
     else:
         df_final = df_novo
 
+    # Salva base final
     df_final.to_excel(caminho_temp, index=False)
 
-    # Salvar no Drive
+    # Sobe/atualiza arquivo principal
     if arquivos:
         arquivo = arquivos[0]
     else:
-        arquivo = drive.CreateFile({
-            'title': nome_arquivo,
-            'parents': [{'id': pasta_bases_id}]
-        })
-
+        arquivo = drive.CreateFile({"title": nome_arquivo, "parents": [{"id": pasta_bases_id}]})
     arquivo.SetContentFile(caminho_temp)
     arquivo.Upload()
 
     # Backup com timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = drive.CreateFile({
-        'title': f'clausulas_validadas__{timestamp}.xlsx',
-        'parents': [{'id': pasta_backups_id}]
+        "title": f"clausulas_validadas__{timestamp}.xlsx",
+        "parents": [{"id": pasta_backups_id}]
     })
     backup.SetContentFile(caminho_temp)
     backup.Upload()
 
+# --------------------------------------------------------------------
+# Caso você ainda use esta função em outro ponto
+# --------------------------------------------------------------------
 def carregar_clausulas_validadas():
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
 
     arquivos = drive.ListFile({
-        'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_validadas.xlsx' and trashed = false"
+        "q": f"'{pasta_bases_id}' in parents and title = 'clausulas_validadas.xlsx' and trashed = false"
     }).GetList()
 
     if not arquivos:
         st.warning("❌ Base de cláusulas validadas não encontrada.")
         return pd.DataFrame(columns=[
             "nome_arquivo", "clausula",
-            "analise_juridico_status", "analise_juridico_motivo",
-            "analise_financeiro_status", "analise_financeiro_motivo",
-            "revisao_juridico_status", "revisao_juridico_motivo",
-            "revisao_financeiro_status", "revisao_financeiro_motivo",
+            "revisao_juridico", "motivo_juridico",
+            "revisao_financeiro", "motivo_financeiro",
+            "revisao_sup", "motivo_sup",
             "user_revisao", "motivo_user"
         ])
 
