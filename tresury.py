@@ -397,14 +397,13 @@ def aba_validacao_clausulas():
 
         st.markdown("### 🧠 Passo 2 — Extrair cláusulas com IA")
         if st.button("✅ Extrair Cláusulas com IA"):
-            with st.spinner(""):
-                df_clausulas = extrair_clausulas_robusto(st.session_state["texto_contrato"])
-                st.session_state["df_clausulas_extraidas"] = df_clausulas
+            df_clausulas = extrair_clausulas_robusto(st.session_state["texto_contrato"])
+            st.session_state["df_clausulas_extraidas"] = df_clausulas
+            
             if not df_clausulas.empty:
                 st.success("✅ Cláusulas extraídas com sucesso!")
             else:
                 st.warning("⚠️ Nenhuma cláusula foi extraída. Revise o texto do contrato.")
-
     else:
         st.info("Clique em **‘▶️ Iniciar leitura do contrato’** para carregar o texto antes de extrair as cláusulas.")
 
