@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer, util
 from openai import OpenAI
 import json
 import requests
-from difflib import get_close_matches
+from difflib import get_close_matches, SequenceMatcher
 import re
 from datetime import timedelta
 import matplotlib.pyplot as plt
@@ -36,6 +36,7 @@ from docx2pdf import convert
 from google.cloud import documentai_v1beta3 as documentai
 from PyPDF2 import PdfReader, PdfWriter
 import io
+import math
 
 st.set_page_config(
     page_title="Revisão de Contratos - PRIO",
@@ -350,6 +351,9 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
 
     return texto
 
+# =========================
+# Página: Validação de Cláusulas
+# =========================
 def aba_validacao_clausulas():
     st.title("🧾 Validação das Cláusulas Contratuais")
 
@@ -369,19 +373,21 @@ def aba_validacao_clausulas():
     # Extrai id_contrato do nome do arquivo (antes do primeiro "_")
     id_contrato = titulo_arquivo.split("_")[0]
 
-    # Se o contrato mudar, limpa estados anteriores para evitar reprocessos
+    # Reseta estados quando o contrato muda
     if st.session_state.get("contrato_validacao") != id_contrato:
         st.session_state["contrato_validacao"] = id_contrato
         st.session_state.pop("texto_contrato", None)
         st.session_state.pop("df_clausulas_extraidas", None)
 
-    # Botão para iniciar a leitura do contrato (NÃO roda automaticamente)
+    # Botão para iniciar a leitura do contrato
     if st.button("▶️ Iniciar leitura do contrato"):
         with st.spinner("Lendo e extraindo texto do contrato..."):
             texto = carregar_texto_contrato_drive(titulo_arquivo, id_arquivo)
-            st.session_state["texto_contrato"] = texto
+            st.session_state["texto_contrato"] = texto or ""
         if st.session_state.get("texto_contrato"):
             st.success("✅ Texto do contrato carregado com sucesso.")
+        else:
+            st.error("❌ Não foi possível carregar o texto do contrato.")
 
     # Exibe o texto apenas se já tiver sido carregado
     if "texto_contrato" in st.session_state and st.session_state["texto_contrato"]:
@@ -394,13 +400,16 @@ def aba_validacao_clausulas():
             with st.spinner("Extraindo cláusulas do contrato..."):
                 df_clausulas = extrair_clausulas_robusto(st.session_state["texto_contrato"])
                 st.session_state["df_clausulas_extraidas"] = df_clausulas
-            st.success("✅ Cláusulas extraídas com sucesso!")
+            if not df_clausulas.empty:
+                st.success("✅ Cláusulas extraídas com sucesso!")
+            else:
+                st.warning("⚠️ Nenhuma cláusula foi extraída. Revise o texto do contrato.")
 
     else:
         st.info("Clique em **‘▶️ Iniciar leitura do contrato’** para carregar o texto antes de extrair as cláusulas.")
 
     # Edição e validação só aparecem após a extração das cláusulas
-    if "df_clausulas_extraidas" in st.session_state:
+    if "df_clausulas_extraidas" in st.session_state and st.session_state["df_clausulas_extraidas"] is not None:
         st.markdown("### ✍️ Revisar Cláusulas Extraídas")
         df_editado = st.data_editor(
             st.session_state["df_clausulas_extraidas"],
@@ -416,62 +425,142 @@ def aba_validacao_clausulas():
             else:
                 st.error("❌ Contrato não encontrado na base para atualização.")
 
-
+# =========================
+# Chunking
+# =========================
 def dividir_em_chunks_simples(texto, max_chars=7000):
-    paragrafos = texto.split("\n\n")
+    """
+    MELHORADO:
+    - Preferência por dividir em quebras de seção/cabeçalhos
+    - Garante overlap para não partir cláusulas longas entre chunks
+    - Evita cortar no meio de frases/pontos finais quando possível
+    """
+    if not texto:
+        return []
+
+    # Normaliza quebras
+    t = re.sub(r'\r\n?', '\n', texto)
+
+    # Heurísticas de possíveis cabeçalhos/seções
+    # (e.g., linhas MAIÚSCULAS, '1.1', 'Section', 'DEFINITIONS', etc.)
+    # Usaremos como pontos candidatos de corte.
+    section_break = re.compile(
+        r'(?:\n(?=[A-Z][A-Z \-\d\.\(\)]{3,}\n)|\n(?=\d+(?:\.\d+){0,3}\s)|\n(?=SECTION\s+\d+)|\n(?=DEFINITIONS)|\n(?=BACKGROUND:))',
+        flags=re.IGNORECASE
+    )
+
+    parts = re.split(section_break, t)
+    parts = [p.strip() for p in parts if p and p.strip()]
+
     chunks = []
     atual = ""
+    overlap = 800  # ~overlap para cobrir cauda/cabeça de cláusula
 
-    for p in paragrafos:
+    def safe_append(acc, nxt):
+        if acc:
+            return acc + "\n\n" + nxt
+        return nxt
+
+    for p in parts:
         if len(atual) + len(p) + 2 <= max_chars:
-            atual += p + "\n\n"
+            atual = safe_append(atual, p)
         else:
-            chunks.append(atual.strip())
-            atual = p + "\n\n"
+            # antes de cortar, tenta encontrar um ponto final próximo ao limite
+            if len(atual) > 0:
+                chunks.append(atual.strip())
+            # inicia novo chunk com overlap do final do anterior (sem ultrapassar)
+            if chunks:
+                cauda = chunks[-1][-overlap:]
+                atual = (cauda + "\n\n" + p).strip()
+                # Se ficar muito grande, reduz o overlap dinamicamente
+                if len(atual) > max_chars:
+                    reduzir = len(atual) - max_chars + 200
+                    atual = (chunks[-1][-max(0, overlap - reduzir):] + "\n\n" + p).strip()
+            else:
+                atual = p
+
+            # Se ainda exceder, força cortes internos por parágrafos completos
+            while len(atual) > max_chars:
+                corte = _find_last_safe_boundary(atual, max_chars)
+                chunks.append(atual[:corte].strip())
+                atual = atual[corte:].strip()
+
     if atual:
         chunks.append(atual.strip())
 
-    return chunks
+    # Dedup/compress chunks vazios ou idênticos
+    uniq = []
+    seen = set()
+    for c in chunks:
+        key = re.sub(r'\s+', ' ', c).strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            uniq.append(c)
+    return uniq
 
+
+def _find_last_safe_boundary(texto, limit):
+    """
+    Procura o último ponto seguro para corte antes de 'limit':
+    prioridade: duplas quebras > ponto final > ponto e vírgula > quebra simples.
+    """
+    candidates = [
+        texto.rfind("\n\n", 0, limit),
+        texto.rfind(". ", 0, limit),
+        texto.rfind("; ", 0, limit),
+        texto.rfind("\n", 0, limit),
+    ]
+    pos = max([c for c in candidates if c != -1] or [limit])
+    return max(1, pos)
+
+# =========================
+# Prompt robusto (sem exemplos fixos; retorna JSON)
+# =========================
 def gerar_prompt_com_exemplos(texto_chunk):
-    exemplos = """
-Exemplos de cláusulas extraídas corretamente:
-
-The Lender agrees, subject to the terms and conditions hereof, to make available to the Borrower the Loan, in one disbursement during the Availability Period upon receipt of a Drawdown Request from the Borrower not later than the Specified Time.
-
-The Borrower shall treat the proceeds of the Loan as a recebimento antecipado de exportação in accordance with the regulations issued by the Central Bank of Brazil. Promptly upon the receipt of the Loan, the Borrower shall enter into an appropriate foreign exchange transaction in order to convert the amount of the Loan proceeds from U.S. Dollars into Brazilian currency (reais) in accordance with the regulations of the Central Bank of Brazil.
-
-The Borrower agrees to contract, execute and perform all of the foreign exchange transactions entered into in connection with this Agreement exclusively with the Lender.
-
-The Borrower shall keep all copies of the shipping documents with respect to the respective export transaction, including documents conveying title to the Goods; the bill(s) of lading; the commercial invoice(s); and any other document which the Lender may reasonably request to attest the shipment of the Goods in a manner consistent with commercial export transactions.
-
-Any Loan amounts which, at that time, are unutilized shall be immediately cancelled at the end of the Availability Period.
-
-"""
-
+    """
+    ALTERADO:
+    - Remove exemplos fixos que o modelo poderia repetir.
+    - Exige saída em JSON: {"clauses": ["...","..."]}
+    - Regras claras: não copiar nada do prompt, não inventar, não sumarizar.
+    """
     prompt = f"""
-Você é um advogado especializado em contratos de crédito internacional.
+Você é um advogado especialista em contratos de captação de dívida (export prepayment, ECA, trade finance).
+Tarefa: IDENTIFICAR e CATALOGAR **cláusulas completas** no trecho abaixo.
 
-Extraia todas as cláusulas do texto a seguir. Cada cláusula deve conter apenas:
+Regras de ouro (siga à risca):
+1) **NÃO** copie exemplos, títulos do documento, marcadores, headers/footers, números de página, placeholders ([•]) ou trechos deste próprio prompt.
+2) **NÃO** inclua numeração/títulos. Extraia **apenas o texto integral da cláusula**.
+3) **NÃO** resuma. **NÃO** reescreva. **NÃO** traduza. Retorne o texto **exato** da cláusula conforme o contrato.
+4) Considere como "cláusula" todo enunciado normativo/operacional **completo** (obrigações, definições, prazos, taxas, eventos de default, lei aplicável, etc.) que possa ser referenciado isoladamente.
+   - Em definições, capture o enunciado inteiro até o fechamento da ideia (geralmente até o ponto final ou quebra clara).
+   - Em listas (a), (b), (c) que formam uma cláusula única, una os itens da mesma cláusula em **uma única string**.
+5) **NÃO** quebre cláusulas em várias saídas; **cada item do array deve conter uma cláusula completa**.
+6) Se o trecho contém apenas parte de uma cláusula (indícios de que foi cortada), **ignore** essa cláusula neste chunk para evitar fragmentos.
+7) Saída **apenas** em JSON válido, no formato:
+{{
+  "clauses": [
+    "cláusula 1 (texto completo sem título/numeração)",
+    "cláusula 2",
+    ...
+  ]
+}}
 
-- Texto completo da cláusula
+Agora processe o trecho a seguir:
 
-Não inclua o seguinte:
-
-- Numeração (1., 2., 3.1, etc.)
-- Título da cláusula (se houver)
-
-Não inclua resumos nem comentários. Apresente a lista no mesmo formtato dos exemplos abaixo.
-
-{exemplos}
-
-Agora processe o seguinte trecho:
-
-\"\"\"{texto_chunk}\"\"\"
+\"\"\"{texto_chunk}\"\"\"    
 """
     return prompt.strip()
 
+# =========================
+# Extração com IA + deduplicação
+# =========================
 def extrair_clausulas_robusto(texto):
+    """
+    ALTERADO:
+    - Usa JSON como protocolo de saída para garantir 1 cláusula = 1 item.
+    - Parser robusto (tenta JSON; fallback para heurística).
+    - Deduplicação forte entre chunks (normalização + similaridade).
+    """
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
     st.info("🔍 Analisando o contrato...")
     partes = dividir_em_chunks_simples(texto)
@@ -484,23 +573,125 @@ def extrair_clausulas_robusto(texto):
                 resposta = client.chat.completions.create(
                     model="gpt-4o",
                     messages=[
-                        {"role": "system", "content": "Você é um especialista jurídico com muita experiência e domínios em cláusulas de contratos de dívida."},
+                        {"role": "system", "content": (
+                            "Você é um especialista jurídico com ampla experiência em contratos "
+                            "de dívida e operações de pré-pagamento de exportação. Siga estritamente as instruções do usuário."
+                        )},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0,
                     max_tokens=4096
                 )
-                saida = resposta.choices[0].message.content.strip()
-                linhas = [l.strip() for l in saida.split("\n") if l.strip()]
-                clausulas_total.extend(linhas)
+                saida = (resposta.choices[0].message.content or "").strip()
+                clausulas = _parse_clauses_from_output(saida)
+                clausulas_total.extend(clausulas)
             except Exception as e:
-                clausulas_total.append(f"[Erro no chunk {i+1}]: {e}")
+                # Mantém robustez, mas sem poluir com erro como cláusula
+                st.error(f"Erro no chunk {i+1}: {e}")
 
+    clausulas_total = _dedupe_clauses(clausulas_total)
+
+    # DataFrame final (mesmo formato/coluna)
     df = pd.DataFrame(clausulas_total, columns=["clausula"])
     return df
 
+
+def _parse_clauses_from_output(saida: str):
+    """
+    Tenta interpretar a saída como JSON {"clauses": [...]}.
+    Fallback: extrai blocos entre aspas ou linhas longas.
+    """
+    # Primeira tentativa: JSON
+    try:
+        data = json.loads(saida)
+        if isinstance(data, dict) and "clauses" in data and isinstance(data["clauses"], list):
+            # Garante strings limpas
+            return [_clean_clause_text(c) for c in data["clauses"] if isinstance(c, str) and _clean_clause_text(c)]
+    except Exception:
+        pass
+
+    # Segunda tentativa: procurar um bloco JSON dentro do texto
+    try:
+        match = re.search(r'\{[\s\S]*\}', saida)
+        if match:
+            data = json.loads(match.group(0))
+            if isinstance(data, dict) and "clauses" in data and isinstance(data["clauses"], list):
+                return [_clean_clause_text(c) for c in data["clauses"] if isinstance(c, str) and _clean_clause_text(c)]
+    except Exception:
+        pass
+
+    # Fallback heurístico: linhas separadas por \n\n (apenas linhas "longas")
+    linhas = [l.strip() for l in re.split(r'\n{2,}', saida) if l.strip()]
+    linhas = [l for l in linhas if len(l) > 30]  # ignora ruído curto
+    return [_clean_clause_text(l) for l in linhas if _clean_clause_text(l)]
+
+
+def _clean_clause_text(txt: str) -> str:
+    # Remove títulos claros no início (heurística) e numerações
+    t = txt.strip()
+    t = re.sub(r'^[0-9]+(\.[0-9]+)*\s*[-–—]*\s*', '', t)  # 1., 1.1.1 -
+    t = re.sub(r'^(SECTION|SEÇÃO|ARTIGO|CLAUSE)\s+[0-9A-Za-z\.\-–—]+\s*[:\-–—]\s*', '', t, flags=re.I)
+    # Remove headers/footers comuns e placeholders pontuais
+    t = re.sub(r'\b\d{5,}v\d+\b', '', t)  # ex: 13348400v3
+    t = re.sub(r'\[[^\]]*\]', '', t)      # remove [•], [__], etc.
+    # Compacta espaços
+    t = re.sub(r'[ \t]+', ' ', t)
+    t = re.sub(r'\s+\n', '\n', t)
+    t = re.sub(r'\n{3,}', '\n\n', t)
+    return t.strip()
+
+
+def _norm_for_hash(s: str) -> str:
+    s2 = s.lower()
+    s2 = re.sub(r'\s+', ' ', s2)
+    s2 = re.sub(r'["“”\'`´]', '', s2)
+    s2 = re.sub(r'[\(\)\[\]\{\}]', '', s2)
+    s2 = re.sub(r'\bsection\b|\bclause\b|\bartigo\b', '', s2)
+    s2 = re.sub(r'\d{5,}v\d+', '', s2)
+    return s2.strip()
+
+
+def _similar(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _dedupe_clauses(clausulas, sim_threshold=0.9):
+    """
+    Remove duplicatas exatas e quase-duplicatas entre chunks com overlap.
+    Mantém a versão mais longa (mais informativa).
+    """
+    uniq = []
+    seen = []
+
+    for c in clausulas:
+        c_clean = _clean_clause_text(c)
+        if not c_clean:
+            continue
+        n = _norm_for_hash(c_clean)
+
+        # Duplicata exata?
+        if any(n == _norm_for_hash(u) for u in uniq):
+            continue
+
+        # Quase duplicata?
+        is_dup = False
+        for u in uniq:
+            if _similar(n, _norm_for_hash(u)) >= sim_threshold:
+                # Se a nova é mais longa, substitui
+                if len(c_clean) > len(u):
+                    idx = uniq.index(u)
+                    uniq[idx] = c_clean
+                is_dup = True
+                break
+
+        if not is_dup:
+            uniq.append(c_clean)
+
+    # Ordena por primeira ocorrência/estabilidade
+    return uniq
+
 # =========================
-# Salvar cláusulas extraídas
+# Salvar cláusulas extraídas (inalterado)
 # =========================
 def salvar_clausulas_validadas(df_clausulas, id_contrato):
     df = carregar_base_contratos()
