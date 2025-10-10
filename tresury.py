@@ -284,7 +284,7 @@ def salvar_clausulas_mapeadas_replace(id_contrato, df_novas_linhas):
 # UPLOAD DE CONTRATO (mantido, sem salvar cláusulas aqui)
 # =========================================
 def aba_upload_contrato(user_email):
-    st.title("📂 Upload do Contrato")
+    st.title("Upload do Contrato")
     st.markdown("Faça upload de um contrato em `.pdf` e preencha os dados abaixo.")
 
     arquivo = st.file_uploader("Selecione o contrato", type=["pdf"])
