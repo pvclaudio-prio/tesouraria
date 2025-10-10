@@ -943,7 +943,7 @@ Análise Financeira:
 
         if st.button("Desejar Salvar ?", key="salvar_novo"):
             salvar_clausulas_validadas_usuario(df_resultado)
-            st.success("✅ Revisão final do usuário salva com sucesso!")
+            st.success("✅ Revisão dos agentes foi salva com sucesso!")
             del st.session_state["analise_automatica_resultado"]
 
     elif df_contrato is not None and not df_contrato.empty and contrato_escolhido:
