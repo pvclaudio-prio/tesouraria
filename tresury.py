@@ -963,6 +963,20 @@ Análise Financeira:
 # =========================================
 USER_REVISAO_OPCOES = ["Concordo", "Discordo", "Melhoria"]
 
+def _safe_df_for_ui(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    for c in df.columns:
+        df[c] = df[c].apply(
+            lambda v: (
+                "" if v is None or (isinstance(v, float) and pd.isna(v))
+                else json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list))
+                else str(v)
+            )
+        )
+    return df
+
 def aba_revisao_final():
     st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
 
@@ -987,46 +1001,29 @@ def aba_revisao_final():
         return
 
     df_filtrado = df[df["nome_arquivo"] == contrato].copy()
-    # garante presença e tipo de colunas editáveis
+    # garante colunas esperadas
     for col in ["user_revisao", "motivo_user"]:
         if col not in df_filtrado.columns:
             df_filtrado[col] = ""
     
-    # remove objetos/None/NaN que quebram o React (tudo vira string segura)
-    safe_cols = [
-        "clausula","revisao_juridico","motivo_juridico",
-        "revisao_financeiro","motivo_financeiro",
-        "revisao_sup","motivo_sup",
-        "user_revisao","motivo_user",
-        "id_contrato","nome_arquivo","run_id","analisado_em"
-    ]
-    for c in safe_cols:
-        if c in df_filtrado.columns:
-            df_filtrado[c] = df_filtrado[c].astype(str).fillna("")
+    # normaliza valores da select (inclui vazio) e evita NaN/objetos
+    valid_opts = {"", "Concordo", "Discordo", "Melhoria"}
+    df_filtrado["user_revisao"] = df_filtrado["user_revisao"].apply(lambda x: x if x in valid_opts else "")
+    df_filtrado = _safe_df_for_ui(df_filtrado)
     
-    # evita valores fora das opções do SelectboxColumn
-    if "user_revisao" in df_filtrado.columns:
-        valid_opts = set(["Concordo","Discordo","Melhoria",""])
-        df_filtrado["user_revisao"] = df_filtrado["user_revisao"].apply(
-            lambda x: x if x in valid_opts else ""
-        )
-
-    st.markdown("### 📝 Revisão Final do Usuário")
-
-    for col in ["user_revisao", "motivo_user"]:
-        if col not in df_filtrado.columns:
-            df_filtrado[col] = ""
-
+    # chave simples e estável por contrato/shape para evitar conflito ao voltar à aba
+    editor_key = f"revisao_final__{contrato}__{len(df_filtrado)}__{len(df_filtrado.columns)}"
+    
     colunas_ordem = [
         "clausula",
         "revisao_juridico", "motivo_juridico",
         "revisao_financeiro", "motivo_financeiro",
         "revisao_sup", "motivo_sup",
         "user_revisao", "motivo_user",
-        "id_contrato", "nome_arquivo",
+        "nome_arquivo",
     ]
     colunas_ordem = [c for c in colunas_ordem if c in df_filtrado.columns]
-
+    
     col_cfg = {
         "clausula": st.column_config.TextColumn("Cláusula", width="large"),
         "motivo_juridico": st.column_config.TextColumn("Motivo Jurídico", width="large"),
@@ -1034,25 +1031,18 @@ def aba_revisao_final():
         "motivo_sup": st.column_config.TextColumn("Motivo Supervisor", width="large"),
         "user_revisao": st.column_config.SelectboxColumn(
             "Revisão do Usuário",
-            options=USER_REVISAO_OPCOES,
-            help="Selecione sua revisão para a cláusula"
-        ),
-        "motivo_user": st.column_config.TextColumn(
-            "Motivo (usuário)",
-            help="Explique de forma objetiva sua concordância/discordância ou sugestão de melhoria",
-            width="large"
+            options=["", "Concordo", "Discordo", "Melhoria"],  # inclui vazio
         ),
         "nome_arquivo": st.column_config.TextColumn("Contrato (interno)"),
         "revisao_juridico": st.column_config.TextColumn("Revisão Jurídica"),
         "revisao_financeiro": st.column_config.TextColumn("Revisão Financeira"),
         "revisao_sup": st.column_config.TextColumn("Revisão Supervisor"),
     }
-
+    
     desabilitadas = [c for c in df_filtrado.columns if c not in ["user_revisao", "motivo_user"]]
-
     linhas = len(df_filtrado)
     altura = min(700, 56 + 40 * min(15, linhas))
-
+    
     with st.form("form_revisao_final", clear_on_submit=False):
         df_editado = st.data_editor(
             df_filtrado,
@@ -1063,9 +1053,9 @@ def aba_revisao_final():
             num_rows="fixed",
             use_container_width=True,
             height=altura,
-            key="revisao_final_editor"
+            key=editor_key,  # <- evita o erro ao voltar
         )
-
+    
         col_a, col_b = st.columns([1, 2])
         salvar_click = col_a.form_submit_button("✅ Salvar revisão final do usuário", use_container_width=True)
         baixar_click = col_b.form_submit_button("⬇️ Baixar análises (.xlsx)", use_container_width=True)
