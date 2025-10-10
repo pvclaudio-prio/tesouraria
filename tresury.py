@@ -1021,7 +1021,7 @@ def aba_revisao_final():
     df_filtrado = _safe_df_for_ui(df_filtrado)
     
     # chave simples e estável por contrato/shape para evitar conflito ao voltar à aba
-    editor_key = f"revisao_final__{contrato}__{len(df_filtrado)}__{len(df_filtrado.columns)}"
+    editor_key = "revisao_final_editor"
     
     colunas_ordem = [
         "clausula",
