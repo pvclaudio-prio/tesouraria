@@ -105,6 +105,15 @@ pagina = st.sidebar.radio("Ir para:", [
     "📘 Relatórios Gerenciais"
 ])
 
+if "last_page" not in st.session_state:
+    st.session_state.last_page = pagina
+if "rev_editor_version" not in st.session_state:
+    st.session_state.rev_editor_version = 0
+
+if st.session_state.last_page != pagina:
+    st.session_state.rev_editor_version += 1   # muda a key do editor
+    st.session_state.last_page = pagina
+    
 # =========================================
 # GOOGLE DRIVE HELPERS
 # =========================================
