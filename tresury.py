@@ -458,7 +458,7 @@ def aba_validacao_clausulas():
         if st.button("✅ Validar cláusulas e salvar"):
             sucesso = salvar_clausulas_validadas(df_editado, id_contrato)
             if sucesso:
-                st.success("📦 Cláusulas validadas e salvas com sucesso (1 linha = 1 cláusula).")
+                st.success("📦 Cláusulas validadas e salvas com sucesso).")
             else:
                 st.error("❌ Contrato não encontrado na base para atualização.")
 
