@@ -987,6 +987,29 @@ def aba_revisao_final():
         return
 
     df_filtrado = df[df["nome_arquivo"] == contrato].copy()
+    # garante presença e tipo de colunas editáveis
+    for col in ["user_revisao", "motivo_user"]:
+        if col not in df_filtrado.columns:
+            df_filtrado[col] = ""
+    
+    # remove objetos/None/NaN que quebram o React (tudo vira string segura)
+    safe_cols = [
+        "clausula","revisao_juridico","motivo_juridico",
+        "revisao_financeiro","motivo_financeiro",
+        "revisao_sup","motivo_sup",
+        "user_revisao","motivo_user",
+        "id_contrato","nome_arquivo","run_id","analisado_em"
+    ]
+    for c in safe_cols:
+        if c in df_filtrado.columns:
+            df_filtrado[c] = df_filtrado[c].astype(str).fillna("")
+    
+    # evita valores fora das opções do SelectboxColumn
+    if "user_revisao" in df_filtrado.columns:
+        valid_opts = set(["Concordo","Discordo","Melhoria",""])
+        df_filtrado["user_revisao"] = df_filtrado["user_revisao"].apply(
+            lambda x: x if x in valid_opts else ""
+        )
 
     st.markdown("### 📝 Revisão Final do Usuário")
 
