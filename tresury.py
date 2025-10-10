@@ -1178,7 +1178,7 @@ def aba_indices_prio():
         arquivos[0].GetContentFile(caminho_temp)
         df_indices = pd.read_excel(caminho_temp)
 
-    st.markdown("###Editar Índices")
+    st.markdown("### Editar Índices")
     df_editado = st.data_editor(
         df_indices,
         num_rows="dynamic",
