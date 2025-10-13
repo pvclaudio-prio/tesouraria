@@ -284,7 +284,7 @@ def salvar_clausulas_mapeadas_replace(id_contrato, df_novas_linhas):
 # UPLOAD DE CONTRATO (mantido, sem salvar cláusulas aqui)
 # =========================================
 def aba_upload_contrato(user_email):
-    st.title("📂 Upload do Contrato")
+    st.title("Upload do Contrato")
     st.markdown("Faça upload de um contrato em `.pdf` e preencha os dados abaixo.")
 
     arquivo = st.file_uploader("Selecione o contrato", type=["pdf"])
@@ -400,7 +400,7 @@ def carregar_texto_contrato_drive(titulo_arquivo, arquivo_id):
 # VALIDAÇÃO DE CLÁUSULAS (EXTRAÇÃO + SALVAR)
 # =========================================
 def aba_validacao_clausulas():
-    st.title("🧾 Validação das Cláusulas Contratuais")
+    st.title("Validação das Cláusulas Contratuais")
 
     contratos = obter_contratos_disponiveis()
     if not contratos:
@@ -430,11 +430,11 @@ def aba_validacao_clausulas():
             st.error("❌ Não foi possível carregar o texto do contrato.")
 
     if "texto_contrato" in st.session_state and st.session_state["texto_contrato"]:
-        st.markdown("### 📄 Visualização do conteúdo do contrato")
+        st.markdown("### Visualização do conteúdo do contrato")
         with st.expander("Visualizar texto completo extraído do contrato"):
             st.text_area("Conteúdo extraído", st.session_state["texto_contrato"], height=400)
 
-        st.markdown("### 🧠 Passo 2 — Extrair cláusulas com IA")
+        st.markdown("### Passo 2 — Extrair cláusulas com IA")
         if st.button("✅ Extrair Cláusulas com IA"):
             df_clausulas = extrair_clausulas_robusto(st.session_state["texto_contrato"])
             st.session_state["df_clausulas_extraidas"] = df_clausulas
@@ -447,7 +447,7 @@ def aba_validacao_clausulas():
         st.info("Clique em **‘▶️ Iniciar leitura do contrato’** para carregar o texto antes de extrair as cláusulas.")
 
     if "df_clausulas_extraidas" in st.session_state and st.session_state["df_clausulas_extraidas"] is not None:
-        st.markdown("### ✍️ Revisar Cláusulas Extraídas")
+        st.markdown("### Revisar Cláusulas Extraídas")
         df_editado = st.data_editor(
             st.session_state["df_clausulas_extraidas"],
             num_rows="dynamic",
@@ -458,7 +458,7 @@ def aba_validacao_clausulas():
         if st.button("✅ Validar cláusulas e salvar"):
             sucesso = salvar_clausulas_validadas(df_editado, id_contrato)
             if sucesso:
-                st.success("📦 Cláusulas validadas e salvas com sucesso (1 linha = 1 cláusula).")
+                st.success("📦 Cláusulas validadas e salvas com sucesso).")
             else:
                 st.error("❌ Contrato não encontrado na base para atualização.")
 
@@ -555,7 +555,7 @@ Agora processe o trecho a seguir:
 
 def extrair_clausulas_robusto(texto):
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-    st.info("🔍 Analisando o contrato...")
+    st.info("Analisando o contrato...")
     partes = dividir_em_chunks_simples(texto)
     clausulas_total = []
     total_ok = 0
@@ -585,7 +585,7 @@ def extrair_clausulas_robusto(texto):
                 st.error(f"Erro no chunk {i+1}: {e}")
 
     clausulas_total = _dedupe_clauses(clausulas_total, sim_threshold=0.92)
-    st.info(f"🔎 Total após deduplicação: {len(clausulas_total)} cláusulas")
+    st.info(f"Total: {len(clausulas_total)} cláusulas")
 
     df = pd.DataFrame(clausulas_total, columns=["clausula"])
     # adiciona numeração sequencial para inspeção na UI
@@ -800,7 +800,7 @@ def salvar_clausulas_validadas_usuario(df_novo):
     backup.Upload()
 
 def aba_analise_automatica():
-    st.title("🧠 Análise Automática das Cláusulas")
+    st.title("Análise Automática das Cláusulas")
 
     df = carregar_clausulas_contratos()  # agora vem de clausulas_mapeadas.xlsx
     df_contrato = carregar_clausulas_analisadas()
@@ -828,7 +828,7 @@ def aba_analise_automatica():
 
             client = OpenAI(api_key=st.secrets["openai"]["api_key"])
             resultados = []
-            st.info("🔍 Iniciando análise com os especialistas jurídico e financeiro...")
+            st.info("Iniciando análise com os especialistas jurídico e financeiro...")
 
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -987,7 +987,7 @@ def _safe_df_for_ui(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def aba_revisao_final():
-    st.title("🧑‍⚖️ Revisão Final do Usuário - Cláusulas Contratuais")
+    st.title("Revisão do Usuário")
 
     st.markdown("""
         <style>
@@ -1021,7 +1021,7 @@ def aba_revisao_final():
     df_filtrado = _safe_df_for_ui(df_filtrado)
     
     # chave simples e estável por contrato/shape para evitar conflito ao voltar à aba
-    editor_key = f"revisao_final__{contrato}__{len(df_filtrado)}__{len(df_filtrado.columns)}"
+    editor_key = "revisao_final_editor"
     
     colunas_ordem = [
         "clausula",
@@ -1084,7 +1084,7 @@ def aba_revisao_final():
     if salvar_click:
         try:
             salvar_clausulas_revisadas_usuario(df_editado)
-            st.success("✅ Revisão final do usuário salva com sucesso!")
+            st.success("✅ Revisão do usuário salva com sucesso!")
         except Exception as e:
             st.error(f"Falha ao salvar no Drive: {e}")
 
@@ -1158,7 +1158,7 @@ def carregar_clausulas_validadas():
 # ÍNDICES PRIO (mantido)
 # =========================================
 def aba_indices_prio():
-    st.title("📊 Índices Financeiros da PRIO")
+    st.title("Índices Financeiros da PRIO")
 
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
@@ -1178,7 +1178,7 @@ def aba_indices_prio():
         arquivos[0].GetContentFile(caminho_temp)
         df_indices = pd.read_excel(caminho_temp)
 
-    st.markdown("### ✍️ Editar Índices")
+    st.markdown("### Editar Índices")
     df_editado = st.data_editor(
         df_indices,
         num_rows="dynamic",
@@ -1215,7 +1215,7 @@ def aba_indices_prio():
 # RELATÓRIO GERENCIAL (mantido)
 # =========================================
 def aba_relatorios_gerenciais():
-    st.title("📘 Relatório Gerencial - Ações Prioritárias por Contrato")
+    st.title("Relatório Gerencial - Ações Prioritárias por Contrato")
 
     df = carregar_clausulas_validadas()
     if df.empty:
