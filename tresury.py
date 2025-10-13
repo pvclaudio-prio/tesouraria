@@ -800,6 +800,13 @@ def salvar_clausulas_validadas_usuario(df_novo):
     backup.Upload()
 
 def aba_analise_automatica():
+    import json
+    import time
+    import traceback
+    from datetime import datetime
+    import tempfile
+    import os
+
     st.title("Análise Automática das Cláusulas")
 
     df = carregar_clausulas_contratos()  # agora vem de clausulas_mapeadas.xlsx
@@ -810,6 +817,64 @@ def aba_analise_automatica():
 
     df_clausulas = df[df["nome_arquivo"] == contrato_escolhido].copy() if contrato_escolhido else pd.DataFrame()
     clausulas = [c.strip() for c in df_clausulas["clausula"].tolist() if c.strip()] if not df_clausulas.empty else []
+
+    # -------------------------
+    # Parâmetros de robustez
+    # -------------------------
+    CHECKPOINT_EVERY = 10          # salva a cada N cláusulas
+    PAUSE_EVERY = 50               # pausa curta a cada N cláusulas
+    PAUSE_SECONDS = 3              # segundos de pausa por bloco
+    MAX_RETRIES = 5                # tentativas por chamada de API
+    INITIAL_BACKOFF = 2            # backoff inicial (segundos)
+
+    # utilitários locais
+    def _checkpoint_path(nome_contrato: str):
+        safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(nome_contrato or "contrato"))
+        # usa diretório temp da sessão; arquivo por contrato
+        return os.path.join(tempfile.gettempdir(), f"checkpoint_analise_{safe}.parquet")
+
+    def _save_checkpoint(registros: list, path: str):
+        if not registros:
+            return
+        try:
+            pd.DataFrame(registros).to_parquet(path, index=False)
+        except Exception:
+            # fallback para xlsx se parquet não disponível no ambiente
+            alt = path.replace(".parquet", ".xlsx")
+            pd.DataFrame(registros).to_excel(alt, index=False)
+
+    def _load_checkpoint(path: str) -> list:
+        if os.path.exists(path):
+            try:
+                return pd.read_parquet(path).to_dict("records")
+            except Exception:
+                alt = path.replace(".parquet", ".xlsx")
+                if os.path.exists(alt):
+                    return pd.read_excel(alt).to_dict("records")
+        return []
+
+    def _safe_chat(client, prompt: str, model: str, max_tokens: int = 1000, temperature: float = 0.0) -> str:
+        """Chamada com retry/backoff para contornar 429/5xx/conexão."""
+        delay = INITIAL_BACKOFF
+        last_err = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return (resp.choices[0].message.content or "").strip()
+            except Exception as e:
+                last_err = e
+                # Erros transitórios: aguarda e tenta novamente
+                time.sleep(delay)
+                delay = min(delay * 2, 30)  # limita o backoff máximo
+        # se chegou aqui, falhou todas as tentativas
+        st.warning(f"Não foi possível completar a chamada de IA após {MAX_RETRIES} tentativas. Erro: {last_err}")
+        # devolve um marcador para seguir sem travar o loop
+        return "Necessita Revisão - Falha temporária na análise. Tente reprocessar esta cláusula."
 
     if clausulas:
         if st.button("✅ Iniciar Análise Automática"):
@@ -827,7 +892,6 @@ def aba_analise_automatica():
             df_indices = pd.read_excel(caminho_indices)
 
             client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-            resultados = []
             st.info("Iniciando análise com os especialistas jurídico e financeiro...")
 
             progress_bar = st.progress(0)
@@ -837,11 +901,31 @@ def aba_analise_automatica():
             contratos_drive = obter_contratos_disponiveis()
             id_contrato_sel = next((x.split("_")[0] for x, _ in contratos_drive if x == contrato_escolhido), "")
 
-            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # run_id único por execução (preservado na sessão)
+            if "analise_run_id" not in st.session_state:
+                st.session_state["analise_run_id"] = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_id = st.session_state["analise_run_id"]
 
-            for i, clausula in enumerate(clausulas):
-                status_text.text(f"Processando cláusula {i+1}/{len(clausulas)}...")
+            # ---------- retomada por checkpoint ----------
+            ckpt_path = _checkpoint_path(contrato_escolhido)
+            resultados = _load_checkpoint(ckpt_path)
+            start_idx = len(resultados)
+            total = len(clausulas)
+
+            if start_idx > 0:
+                st.info(f"Retomando a partir da cláusula {start_idx + 1} de {total} (checkpoint detectado).")
+
+            # atualiza progress bar conforme checkpoint
+            if total > 0:
+                progress_bar.progress(start_idx / total)
+
+            texto_indices = df_indices.to_string(index=False)
+
+            for i, clausula in enumerate(clausulas[start_idx:], start=start_idx):
+                status_text.text(f"Processando cláusula {i+1}/{total}...")
+
                 with st.spinner():
+                    # --------- agente jurídico ----------
                     prompt_juridico = f"""
 Você é um advogado especialista em contratos de dívida.
 Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
@@ -850,14 +934,9 @@ Justifique de forma objetiva com base jurídica.
 
 Cláusula:
 \"\"\"{clausula}\"\"\""""
-                    resposta_juridico = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_juridico}],
-                        temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                    resposta_juridico = _safe_chat(client, prompt_juridico, model="gpt-4o", max_tokens=1000, temperature=0)
 
-                    texto_indices = df_indices.to_string(index=False)
+                    # --------- agente financeiro ----------
                     prompt_financeiro = f"""
 Você é um especialista financeiro com foco em contratos de captação de dívida. Abaixo estão os índices financeiros da empresa PRIO:
 
@@ -871,13 +950,9 @@ Justifique com base nos dados da empresa e benchmarking de mercado.
 
 Cláusula:
 \"\"\"{clausula}\"\"\""""
-                    resposta_financeiro = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_financeiro}],
-                        temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                    resposta_financeiro = _safe_chat(client, prompt_financeiro, model="gpt-4o", max_tokens=1000, temperature=0)
 
+                    # --------- supervisor ----------
                     prompt_supervisor = f"""
 Você é o supervisor responsável pela revisão final. 
 Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
@@ -885,20 +960,14 @@ Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente
 Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
 
 Cláusula:
-\"\"\"{clausula}\"\"\"
-
-
+\"\"\"{clausula}\"\"\"\n
+\n
 Análise Jurídica:
-{resposta_juridico}
-
+{resposta_juridico}\n
+\n
 Análise Financeira:
 {resposta_financeiro}"""
-                    resposta_supervisor = client.chat.completions.create(
-                        model="gpt-4o",
-                        messages=[{"role": "user", "content": prompt_supervisor}],
-                        temperature=0,
-                        max_tokens=1000
-                    ).choices[0].message.content.strip()
+                    resposta_supervisor = _safe_chat(client, prompt_supervisor, model="gpt-4o", max_tokens=1000, temperature=0)
 
                     jur_raw = (resposta_juridico or "").strip().lower()
                     jur_status = "Conforme" if jur_raw.startswith("conforme") else "Necessita Revisão"
@@ -928,11 +997,30 @@ Análise Financeira:
                         "analisado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     })
 
-                progress_bar.progress((i + 1) / len(clausulas))
+                # progresso visual
+                progress_bar.progress((i + 1) / total)
 
+                # --------- checkpoint periódico ----------
+                if (i + 1) % CHECKPOINT_EVERY == 0 or (i + 1) == total:
+                    _save_checkpoint(resultados, ckpt_path)
+
+                # --------- pausa por bloco para evitar limite/timeout ----------
+                if (i + 1) % PAUSE_EVERY == 0:
+                    time.sleep(PAUSE_SECONDS)
+
+            # fim do loop
             df_resultado = pd.DataFrame(resultados)
             st.session_state["analise_automatica_resultado"] = df_resultado
             st.success("✅ Análise automática concluída.")
+
+            # remove o checkpoint após concluir (mantém se usuário recarregar antes)
+            try:
+                if os.path.exists(ckpt_path):
+                    os.remove(ckpt_path)
+                if os.path.exists(ckpt_path.replace(".parquet", ".xlsx")):
+                    os.remove(ckpt_path.replace(".parquet", ".xlsx"))
+            except Exception:
+                pass
 
     else:
         st.warning("Não há cláusulas validadas disponíveis.")
@@ -966,6 +1054,7 @@ Análise Financeira:
                                file_name="clausulas_analisadas.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                key="download_anterior")
+
 
 # =========================================
 # REVISÃO FINAL (mantido c/ pequenas garantias)
