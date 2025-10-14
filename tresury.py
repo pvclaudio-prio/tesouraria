@@ -1087,13 +1087,13 @@ def aba_revisao_final():
 
     # ⬇️ ALTERADO: carregar ambas as bases
    with st.spinner("Carregando cláusulas..."):
-        df_analisadas = carregar_clausulas_analisadas()
-        if df_analisadas is None:
-            df_analisadas = pd.DataFrame()
-    
-        df_validadas = carregar_clausulas_validadas()
-        if df_validadas is None:
-            df_validadas = pd.DataFrame()
+    df_analisadas = carregar_clausulas_analisadas()
+    if df_analisadas is None:
+        df_analisadas = pd.DataFrame()
+
+    df_validadas = carregar_clausulas_validadas()
+    if df_validadas is None:
+        df_validadas = pd.DataFrame()
 
 
     # se as duas estiverem vazias, não há o que mostrar
