@@ -1080,38 +1080,56 @@ def aba_revisao_final():
 
     st.markdown("""
         <style>
-        .stDataFrame td, .stDataFrame div, .stDataEditor td, .stDataEditor div {
-            white-space: normal !important;
-        }
+        .stDataFrame td, .stDataFrame div, .stDataEditor td, .stDataEditor div { white-space: normal !important; }
         .stDataEditor [data-testid="stVerticalBlock"] { overflow: visible !important; }
         </style>
     """, unsafe_allow_html=True)
 
-    with st.spinner("Carregando cláusulas analisadas..."):
-        df = carregar_clausulas_analisadas()
-    if df is None or df.empty:
-        st.warning("Nenhuma cláusula analisada disponível.")
+    # ⬇️ ALTERADO: carregar ambas as bases
+    with st.spinner("Carregando cláusulas..."):
+        df_analisadas = carregar_clausulas_analisadas() or pd.DataFrame()
+        df_validadas = carregar_clausulas_validadas() or pd.DataFrame()
+
+    # se as duas estiverem vazias, não há o que mostrar
+    if (df_analisadas is None or df_analisadas.empty) and (df_validadas is None or df_validadas.empty):
+        st.warning("Nenhuma cláusula disponível (analisadas ou validadas).")
         return
 
-    contratos_disponiveis = df["nome_arquivo"].dropna().unique().tolist()
+    # ⬇️ ALTERADO: lista de contratos = união das duas bases
+    contratos_disponiveis = sorted(set(
+        (df_analisadas["nome_arquivo"].dropna().unique().tolist() if not df_analisadas.empty else []) +
+        (df_validadas["nome_arquivo"].dropna().unique().tolist() if not df_validadas.empty else [])
+    ))
+
     contrato = st.selectbox("Selecione o contrato:", contratos_disponiveis)
     if not contrato:
         return
 
-    df_filtrado = df[df["nome_arquivo"] == contrato].copy()
+    # ⬇️ ALTERADO: preferir validadas para o contrato, senão cair para analisadas
+    df_val = df_validadas[df_validadas["nome_arquivo"] == contrato] if not df_validadas.empty else pd.DataFrame()
+    if not df_val.empty:
+        df_filtrado = df_val.copy()
+        origem_base = "cláusulas validadas"
+    else:
+        df_filtrado = df_analisadas[df_analisadas["nome_arquivo"] == contrato].copy() if not df_analisadas.empty else pd.DataFrame()
+        origem_base = "cláusulas analisadas"
+
+    if df_filtrado is None or df_filtrado.empty:
+        st.warning("Nenhuma cláusula encontrada para o contrato selecionado.")
+        return
+
     # garante colunas esperadas
     for col in ["user_revisao", "motivo_user"]:
         if col not in df_filtrado.columns:
             df_filtrado[col] = ""
-    
+
     # normaliza valores da select (inclui vazio) e evita NaN/objetos
     valid_opts = {"", "Concordo", "Discordo", "Melhoria"}
     df_filtrado["user_revisao"] = df_filtrado["user_revisao"].apply(lambda x: x if x in valid_opts else "")
     df_filtrado = _safe_df_for_ui(df_filtrado)
-    
-    # chave simples e estável por contrato/shape para evitar conflito ao voltar à aba
+
     editor_key = "revisao_final_editor"
-    
+
     colunas_ordem = [
         "clausula",
         "revisao_juridico", "motivo_juridico",
@@ -1121,26 +1139,24 @@ def aba_revisao_final():
         "nome_arquivo",
     ]
     colunas_ordem = [c for c in colunas_ordem if c in df_filtrado.columns]
-    
+
     col_cfg = {
         "clausula": st.column_config.TextColumn("Cláusula", width="large"),
         "motivo_juridico": st.column_config.TextColumn("Motivo Jurídico", width="large"),
         "motivo_financeiro": st.column_config.TextColumn("Motivo Financeiro", width="large"),
         "motivo_sup": st.column_config.TextColumn("Motivo Supervisor", width="large"),
-        "user_revisao": st.column_config.SelectboxColumn(
-            "Revisão do Usuário",
-            options=["", "Concordo", "Discordo", "Melhoria"],  # inclui vazio
-        ),
+        "user_revisao": st.column_config.SelectboxColumn("Revisão do Usuário",
+            options=["", "Concordo", "Discordo", "Melhoria"]),
         "nome_arquivo": st.column_config.TextColumn("Contrato (interno)"),
         "revisao_juridico": st.column_config.TextColumn("Revisão Jurídica"),
         "revisao_financeiro": st.column_config.TextColumn("Revisão Financeira"),
         "revisao_sup": st.column_config.TextColumn("Revisão Supervisor"),
     }
-    
+
     desabilitadas = [c for c in df_filtrado.columns if c not in ["user_revisao", "motivo_user"]]
     linhas = len(df_filtrado)
     altura = min(700, 56 + 40 * min(15, linhas))
-    
+
     with st.form("form_revisao_final", clear_on_submit=False):
         df_editado = st.data_editor(
             df_filtrado,
@@ -1151,9 +1167,9 @@ def aba_revisao_final():
             num_rows="fixed",
             use_container_width=True,
             height=altura,
-            key=editor_key,  # <- evita o erro ao voltar
+            key=editor_key,
         )
-    
+
         col_a, col_b = st.columns([1, 2])
         salvar_click = col_a.form_submit_button("✅ Salvar revisão final do usuário", use_container_width=True)
         baixar_click = col_b.form_submit_button("⬇️ Baixar análises (.xlsx)", use_container_width=True)
@@ -1177,7 +1193,7 @@ def aba_revisao_final():
         except Exception as e:
             st.error(f"Falha ao salvar no Drive: {e}")
 
-    st.caption(f"A base possui **{linhas}** cláusulas para o contrato selecionado.")
+    st.caption(f"A base exibida é **{origem_base}**. Existem **{linhas}** cláusulas para o contrato selecionado.")
 
 def salvar_clausulas_revisadas_usuario(df_novo: pd.DataFrame):
     drive = conectar_drive()
