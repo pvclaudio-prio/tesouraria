@@ -1141,7 +1141,6 @@ def aba_revisao_final():
         "revisao_juridico", "motivo_juridico",
         "revisao_financeiro", "motivo_financeiro",
         "revisao_sup", "motivo_sup",
-        "user_revisao", "motivo_user",
         "nome_arquivo",
     ]
     colunas_ordem = [c for c in colunas_ordem if c in df_filtrado.columns]
