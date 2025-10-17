@@ -940,7 +940,8 @@ Cláusula:
                     prompt_financeiro = f"""
 Você é um especialista financeiro com foco em contratos de captação de dívida. Abaixo estão os índices financeiros da empresa PRIO:
 
-{texto_indices}
+Financial Covenant = 2,5%
+Minimum Treshold = 75 milhões USD
 
 Analise a cláusula a seguir e diga se ela está financeiramente Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
 Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
