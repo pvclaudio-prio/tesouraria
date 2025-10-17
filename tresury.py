@@ -1021,6 +1021,7 @@ Cláusula:
     elif df_contrato is not None and not df_contrato.empty and contrato_escolhido:
         df_contrato = df_contrato[df_contrato["nome_arquivo"] == contrato_escolhido]
         if not df_contrato.empty:
+            df_contrato = df_contrato.drop(columns=["revisao_sup","motivo_sup","id_contrato"])
             st.dataframe(df_contrato, use_container_width=True)
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
