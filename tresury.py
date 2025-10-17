@@ -1264,7 +1264,7 @@ def aba_indices_prio():
         arquivos[0].GetContentFile(caminho_temp)
         df_indices = pd.read_excel(caminho_temp)
 
-    st.markdown("### Editar Índices")
+    st.markdown("### Editar Cláusulas")
     df_editado = st.data_editor(
         df_indices,
         num_rows="dynamic",
@@ -1272,7 +1272,7 @@ def aba_indices_prio():
         key="editor_clausulas_prio"
     )
 
-    if st.button("💾 Salvar Índices"):
+    if st.button("💾 Salvar Cláusulas"):
         caminho_temp_salvar = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         df_editado.to_excel(caminho_temp_salvar, index=False)
 
