@@ -928,6 +928,7 @@ Você é um advogado especialista em contratos de dívida.
 Analise a cláusula abaixo e diga se está Conforme ou se Necessita Revisão. Você somente pode escolher uma alternativa.
 Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revisão.
 Justifique de forma objetiva com base jurídica.
+Utilize o conteúdo das cláusulas padrão como referência para suas análises, visto que são cláusulas previamente revisadas.
 
 Cláusula:
 \"\"\"{clausula}\"\"\"\n
