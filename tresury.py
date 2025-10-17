@@ -101,7 +101,7 @@ pagina = st.sidebar.radio("Ir para:", [
     "🧾 Validação das Cláusulas",
     "🔍 Análise Automática",
     "🧑‍⚖️ Revisão Final",
-    "📊 Índices PRIO",
+    "📊 Cláusulas Padrão PRIO",
     "📘 Relatórios Gerenciais"
 ])
 
@@ -728,7 +728,6 @@ def carregar_clausulas_analisadas():
             "id_contrato","nome_arquivo","clausula",
             "revisao_juridico","motivo_juridico",
             "revisao_financeiro","motivo_financeiro",
-            "revisao_sup","motivo_sup",
             "run_id","analisado_em"
         ])
 
@@ -745,12 +744,10 @@ def carregar_clausulas_analisadas():
         "revisao_juridico_motivo": "motivo_juridico",
         "revisao_financeiro_status": "revisao_financeiro",
         "revisao_financeiro_motivo": "motivo_financeiro",
-        "revisao_sup_status": "revisao_sup",
-        "revisao_sup_motivo": "motivo_sup",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    for c in ["id_contrato","revisao_juridico","motivo_juridico","revisao_financeiro","motivo_financeiro","revisao_sup","motivo_sup","run_id","analisado_em"]:
+    for c in ["id_contrato","revisao_juridico","motivo_juridico","revisao_financeiro","motivo_financeiro","run_id","analisado_em"]:
         if c not in df.columns:
             df[c] = ""
     return df
@@ -881,10 +878,10 @@ def aba_analise_automatica():
             drive = conectar_drive()
             pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
             arquivos = drive.ListFile({
-                'q': f"'{pasta_bases_id}' in parents and title = 'empresa_referencia_PRIO.xlsx' and trashed = false"
+                'q': f"'{pasta_bases_id}' in parents and title = 'clausulas_referencia_PRIO.xlsx' and trashed = false"
             }).GetList()
             if not arquivos:
-                st.error("Base de índices financeiros 'empresa_referencia_PRIO.xlsx' não encontrada.")
+                st.error("Base de cláusulas padrão 'clausulas_referencia_PRIO.xlsx' não encontrada.")
                 return
 
             caminho_indices = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
@@ -933,7 +930,11 @@ Sempre inicie sua resposta com exatamente as palavras Conforme ou Necessita Revi
 Justifique de forma objetiva com base jurídica.
 
 Cláusula:
-\"\"\"{clausula}\"\"\""""
+\"\"\"{clausula}\"\"\"\n
+\n
+Cláusulas Padrão:
+{texto_indices}\n
+\n"""
                     resposta_juridico = _safe_chat(client, prompt_juridico, model="gpt-4o", max_tokens=1000, temperature=0)
 
                     # --------- agente financeiro ----------
@@ -953,36 +954,11 @@ Cláusula:
 \"\"\"{clausula}\"\"\""""
                     resposta_financeiro = _safe_chat(client, prompt_financeiro, model="gpt-4o", max_tokens=1000, temperature=0)
 
-                    # --------- supervisor ----------
-                    prompt_supervisor = f"""
-Você é o supervisor responsável pela revisão final. 
-Abaixo está a cláusula, a análise do agente jurídico e a análise do agente financeiro. 
-Revise cada uma delas e diga se Concorda ou Não Concorda, e explique brevemente o motivo.
-Sempre inicie sua resposta com exatamente as palavras Concorda ou Não Concorda.
-
-Cláusula:
-\"\"\"{clausula}\"\"\"\n
-\n
-Análise Jurídica:
-{resposta_juridico}\n
-\n
-Análise Financeira:
-{resposta_financeiro}"""
-                    resposta_supervisor = _safe_chat(client, prompt_supervisor, model="gpt-4o", max_tokens=1000, temperature=0)
-
                     jur_raw = (resposta_juridico or "").strip().lower()
                     jur_status = "Conforme" if jur_raw.startswith("conforme") else "Necessita Revisão"
 
                     fin_raw = (resposta_financeiro or "").strip().lower()
                     fin_status = "Conforme" if fin_raw.startswith("conforme") else "Necessita Revisão"
-
-                    sup_raw = (resposta_supervisor or "").strip().lower()
-                    if sup_raw.startswith("não concorda"):
-                        sup_status = "Não Concorda"
-                    elif sup_raw.startswith("concorda"):
-                        sup_status = "Concorda"
-                    else:
-                        sup_status = "Não Concorda"
 
                     resultados.append({
                         "id_contrato": id_contrato_sel,
@@ -992,8 +968,6 @@ Análise Financeira:
                         "motivo_juridico": resposta_juridico,
                         "revisao_financeiro": fin_status,
                         "motivo_financeiro": resposta_financeiro,
-                        "revisao_sup": sup_status,
-                        "motivo_sup": resposta_supervisor,
                         "run_id": run_id,
                         "analisado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     })
@@ -1141,7 +1115,6 @@ def aba_revisao_final():
         "clausula",
         "revisao_juridico", "motivo_juridico",
         "revisao_financeiro", "motivo_financeiro",
-        "revisao_sup", "motivo_sup",
         "user_revisao", "motivo_user",
         "nome_arquivo",
     ]
@@ -1151,13 +1124,11 @@ def aba_revisao_final():
         "clausula": st.column_config.TextColumn("Cláusula", width="large"),
         "motivo_juridico": st.column_config.TextColumn("Motivo Jurídico", width="large"),
         "motivo_financeiro": st.column_config.TextColumn("Motivo Financeiro", width="large"),
-        "motivo_sup": st.column_config.TextColumn("Motivo Supervisor", width="large"),
         "user_revisao": st.column_config.SelectboxColumn("Revisão do Usuário",
             options=["", "Concordo", "Discordo", "Melhoria"]),
         "nome_arquivo": st.column_config.TextColumn("Contrato (interno)"),
         "revisao_juridico": st.column_config.TextColumn("Revisão Jurídica"),
         "revisao_financeiro": st.column_config.TextColumn("Revisão Financeira"),
-        "revisao_sup": st.column_config.TextColumn("Revisão Supervisor"),
     }
 
     desabilitadas = [c for c in df_filtrado.columns if c not in ["user_revisao", "motivo_user"]]
@@ -1270,21 +1241,21 @@ def carregar_clausulas_validadas():
 # ÍNDICES PRIO (mantido)
 # =========================================
 def aba_indices_prio():
-    st.title("Índices Financeiros da PRIO")
+    st.title("Cláusulas Padrão da PRIO")
 
     drive = conectar_drive()
     pasta_bases_id = obter_id_pasta("bases", parent_id=obter_id_pasta("Tesouraria"))
     pasta_backups_id = obter_id_pasta("backups", parent_id=obter_id_pasta("Tesouraria"))
 
-    nome_arquivo = "empresa_referencia_PRIO.xlsx"
+    nome_arquivo = "clausulas_referencia_PRIO.xlsx"
 
     arquivos = drive.ListFile({
         'q': f"'{pasta_bases_id}' in parents and title = '{nome_arquivo}' and trashed = false"
     }).GetList()
 
     if not arquivos:
-        st.warning("Base 'empresa_referencia_PRIO.xlsx' não encontrada. Será criada uma nova base.")
-        df_indices = pd.DataFrame(columns=["EBITDA", "Mrg EBITDA", "Res Fin", "Dívida", "Lucro Líq", "Caixa"])
+        st.warning("Base 'clausulas_referencia_PRIO.xlsx' não encontrada. Será criada uma nova base.")
+        df_indices = pd.DataFrame(columns=["Clausula", "Detalhamento"])
     else:
         caminho_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         arquivos[0].GetContentFile(caminho_temp)
@@ -1295,7 +1266,7 @@ def aba_indices_prio():
         df_indices,
         num_rows="dynamic",
         use_container_width=True,
-        key="editor_indices_prio"
+        key="editor_clausulas_prio"
     )
 
     if st.button("💾 Salvar Índices"):
@@ -1315,13 +1286,13 @@ def aba_indices_prio():
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup = drive.CreateFile({
-            'title': f"empresa_referencia_PRIO__{timestamp}.xlsx",
+            'title': f"clausulas_referencia_PRIO__{timestamp}.xlsx",
             'parents': [{'id': pasta_backups_id}]
         })
         backup.SetContentFile(caminho_temp_salvar)
         backup.Upload()
 
-        st.success("✅ Índices salvos e backup criado com sucesso!")
+        st.success("✅ Cláusulas salvas e backup criado com sucesso!")
 
 # =========================================
 # RELATÓRIO GERENCIAL (mantido)
@@ -1399,7 +1370,7 @@ elif pagina == "🔍 Análise Automática":
     aba_analise_automatica()
 elif pagina == "🧑‍⚖️ Revisão Final":
     aba_revisao_final()
-elif pagina == "📊 Índices PRIO":
+elif pagina == "📊 Cláusulas Padrão PRIO":
     aba_indices_prio()
 elif pagina == "📘 Relatórios Gerenciais":
     aba_relatorios_gerenciais()
